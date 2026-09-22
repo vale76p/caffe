@@ -17,7 +17,7 @@
     <key>CFBundleVersion</key>
     <string>2</string>
     <key>CFBundleIconFile</key>
-    <string>caff_off</string>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>

@@ -18,12 +18,18 @@ mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
 cp .build/release/Caffe "$STAGED_APP/Contents/MacOS/Caffe"
 cp Info.plist "$STAGED_APP/Contents/Info.plist"
 
-# icone riusate dal vecchio Caffè (fallback: icona generica, l'app resta funzionante)
-if [ -d "$OLD_APP/Contents/Resources" ]; then
-    cp "$OLD_APP/Contents/Resources/"*.icns "$STAGED_APP/Contents/Resources/" 2>/dev/null || true
-fi
+echo "▸ Genero l'icona del bundle (tazzina, nessuna scritta)…"
+ICONSET="$STAGED_APP/Contents/Resources/AppIcon.iconset"
+mkdir -p "$ICONSET"
+for SIZE in 16 32 128 256 512; do
+    swift make_icon.swift "$ICONSET/icon_${SIZE}x${SIZE}.png" "$SIZE"
+    swift make_icon.swift "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" "$((SIZE * 2))"
+done
+iconutil -c icns "$ICONSET" -o "$STAGED_APP/Contents/Resources/AppIcon.icns"
+rm -rf "$ICONSET"
 
 echo "▸ Firmo (ad-hoc)…"
+xattr -cr "$STAGED_APP" 2>/dev/null || true # detriti (FinderInfo ecc.) bloccano codesign
 codesign --force --sign - "$STAGED_APP"
 
 if [ -d "$OLD_APP" ]; then

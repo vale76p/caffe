@@ -155,11 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            secondsRemaining: caffeinate.secondsRemaining())
             : inactiveStateRowText
 
-        let symbolName = active ? "cup.and.saucer.fill" : "cup.and.saucer"
-        let image = NSImage(systemSymbolName: symbolName,
-                            accessibilityDescription: active ? "Caffè attivo" : "Caffè inattivo")
-        image?.isTemplate = true // segue aspetto chiaro/scuro e dimensioni standard
-        statusItem.button?.image = image
+        statusItem.button?.image = statusIcon(active: active)
 
         for item in durationItems {
             let index = item.representedObject as! Int
@@ -168,6 +164,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stopItem.isHidden = !active
 
         refreshLoginState()
+    }
+
+    private func statusIcon(active: Bool) -> NSImage? {
+        if active {
+            let image = NSImage(systemSymbolName: "cup.and.saucer.fill",
+                                accessibilityDescription: "Caffè attivo")
+            image?.isTemplate = true // contrasto pieno, segue chiaro/scuro
+            return image
+        } else {
+            let symbol = NSImage(systemSymbolName: "cup.and.saucer",
+                                  accessibilityDescription: "Caffè inattivo")
+            let gray = NSImage.SymbolConfiguration(paletteColors: [NSColor(white: 0.65, alpha: 1.0)])
+            let image = symbol?.withSymbolConfiguration(gray)
+            image?.isTemplate = false // rispetta il grigio chiaro richiesto
+            return image
+        }
     }
 
     private func refreshLoginState() {
