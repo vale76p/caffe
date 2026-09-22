@@ -15,10 +15,10 @@ let package = Package(
             path: "Sources/Caffe",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        .testTarget(
-            name: "CaffeTests",
+        .executableTarget(
+            name: "CaffeTestRunner",
             dependencies: ["CaffeCore"],
-            path: "Tests/CaffeTests",
+            path: "Sources/CaffeTestRunner",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]
