@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Caffe</string>
+    <key>CFBundleIdentifier</key>
+    <string>local.caffe.menubar</string>
+    <key>CFBundleName</key>
+    <string>Caffè</string>
+    <key>CFBundleDisplayName</key>
+    <string>Caffè</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>2.0</string>
+    <key>CFBundleVersion</key>
+    <string>2</string>
+    <key>CFBundleIconFile</key>
+    <string>caff_off</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSUserNotificationsUsageDescription</key>
+    <string>Caffè ti avvisa quando il timer scade.</string>
+</dict>
+</plist>
