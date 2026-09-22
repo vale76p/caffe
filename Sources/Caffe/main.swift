@@ -10,12 +10,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem!
     private let caffeinate = CaffeinateProcess()
+    private let screensaver = ScreensaverControl()
+    private var screensaverSwitch: NSSwitch?
+    private var loginSwitch: NSSwitch?
     private var ticker: Timer?
 
     private var stateRow: NSMenuItem!
     private var durationItems: [NSMenuItem] = []
     private var stopItem: NSMenuItem!
-    private var loginItem: NSMenuItem!
 
     private var authRequested = false
 
@@ -62,7 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
-        stateRow = NSMenuItem(title: inactiveStateRowText, action: nil, keyEquivalent: "")
+        stateRow = NSMenuItem(title: "Caffè spento", action: nil, keyEquivalent: "")
         stateRow.isEnabled = false
 
         let menu = NSMenu()
@@ -87,10 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(stopItem)
         menu.addItem(.separator())
 
-        loginItem = NSMenuItem(title: "Avvia al login",
-                               action: #selector(toggleLogin(_:)),
-                               keyEquivalent: "")
-        loginItem.target = self
+        let screensaverItem = switchItem(title: "Screensaver dopo 45 min", isOn: screensaver.isActive, tag: 1)
+        menu.addItem(screensaverItem)
+        let loginItem = switchItem(title: "Avvia al login",
+                                   isOn: SMAppService.mainApp.status == .enabled,
+                                   tag: 2)
         menu.addItem(loginItem)
 
         let quitItem = NSMenuItem(title: "Esci",
@@ -99,8 +102,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
 
+        menu.delegate = self
         statusItem.menu = menu
         refresh()
+    }
+
+    // MARK: switch del menu
+
+    private func switchItem(title: String, isOn: Bool, tag: Int) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 26))
+        let label = NSTextField(labelWithString: title)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let sw = NSSwitch(frame: .zero)
+        sw.translatesAutoresizingMaskIntoConstraints = false
+        sw.tag = tag
+        sw.state = isOn ? .on : .off
+        sw.target = self
+        sw.action = #selector(toggleSwitch(_:))
+        view.addSubview(label)
+        view.addSubview(sw)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            sw.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            sw.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+        item.view = view
+        switch tag {
+        case 1: screensaverSwitch = sw
+        default: loginSwitch = sw
+        }
+        return item
+    }
+
+    @objc private func toggleSwitch(_ sender: NSSwitch) {
+        switch sender.tag {
+        case 1:
+            if sender.state == .on {
+                screensaver.enable()
+            } else {
+                screensaver.disable()
+            }
+        case 2:
+            toggleLoginCore()
+        default:
+            break
+        }
     }
 
     // MARK: azioni menu
@@ -124,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh()
     }
 
-    @objc private func toggleLogin(_ sender: NSMenuItem) {
+    private func toggleLoginCore() {
         let service = SMAppService.mainApp
         do {
             if service.status == .enabled {
@@ -141,7 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 """
             alert.runModal()
         }
-        refreshLoginState()
+        loginSwitch?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
     }
 
     @objc private func quit(_ sender: NSMenuItem) {
@@ -153,10 +201,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh() {
         let active = caffeinate.isRunning
 
-        stateRow.title = active
-            ? stateRowText(option: caffeinate.option ?? .infinite,
-                           secondsRemaining: caffeinate.secondsRemaining())
-            : inactiveStateRowText
+        stateRow.title = statusLine(active: caffeinate.isRunning,
+                                    elapsedSeconds: caffeinate.elapsedSeconds(),
+                                    remainingSeconds: caffeinate.secondsRemaining())
 
         statusItem.button?.image = statusIcon(active: active)
 
@@ -165,8 +212,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.state = (active && durations[index] == caffeinate.option) ? .on : .off
         }
         stopItem.isHidden = !active
-
-        refreshLoginState()
     }
 
     private func statusIcon(active: Bool) -> NSImage? {
@@ -183,10 +228,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             image?.isTemplate = false // rispetta il grigio chiaro richiesto
             return image
         }
-    }
-
-    private func refreshLoginState() {
-        loginItem.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
     }
 
     // MARK: notifiche
@@ -210,6 +251,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                             content: content,
                                             trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+}
+
+// Risincronizza gli switch a ogni apertura del menu (incluse modifiche esterne).
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        refresh()
+        screensaverSwitch?.state = screensaver.isActive ? .on : .off
+        loginSwitch?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
     }
 }
 

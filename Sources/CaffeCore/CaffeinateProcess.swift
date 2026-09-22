@@ -29,6 +29,7 @@ public final class CaffeinateProcess {
     public private(set) var option: DurationOption?
 
     private var endDate: Date?
+    private var startDate: Date?
 
     public var isRunning: Bool {
         return process?.isRunning ?? false
@@ -38,6 +39,12 @@ public final class CaffeinateProcess {
     public func secondsRemaining(now: Date = Date()) -> Int? {
         guard let endDate else { return nil }
         return max(0, Int(endDate.timeIntervalSince(now)))
+    }
+
+    /// Secondi da quando il caffeinate è attivo (nil se non attivo).
+    public func elapsedSeconds(now: Date = Date()) -> Int? {
+        guard let startDate else { return nil }
+        return max(0, Int(now.timeIntervalSince(startDate)))
     }
 
     /// Attiva una durata del menu, sostituendo l'eventuale attivazione in corso.
@@ -74,6 +81,7 @@ public final class CaffeinateProcess {
         process = p
         stopFlag = flag
         endDate = seconds.map { Date().addingTimeInterval(TimeInterval($0)) }
+        startDate = Date()
     }
 
     /// Spegne il proprio caffeinate figlio, senza notifiche.
@@ -97,5 +105,6 @@ public final class CaffeinateProcess {
         stopFlag = nil
         option = nil
         endDate = nil
+        startDate = nil
     }
 }

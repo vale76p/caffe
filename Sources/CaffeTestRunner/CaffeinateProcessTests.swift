@@ -65,4 +65,13 @@ func runCaffeinateProcessTests() {
         try expectTrue((540...600).contains(s), "atteso 540-600, avuto \(s)")
         c.stop()
     }
+
+    runTest("attività: secondi trascorsi dall'avvio") {
+        let c = CaffeinateProcess()
+        try c.start(option: .infinite)
+        let elapsed = c.elapsedSeconds()!
+        try expectTrue(elapsed >= 0 && elapsed < 10, "atteso 0-10, avuto \(elapsed)")
+        c.stop()
+        try expectNil(c.elapsedSeconds())
+    }
 }

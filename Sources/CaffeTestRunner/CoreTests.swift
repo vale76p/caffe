@@ -34,17 +34,22 @@ func runCoreTests() {
     runTest("remainingText: ore e minuti") { try expectEqual(remainingText(seconds: 9000), "2 ore e 30 min") }
     runTest("remainingText: meno di un minuto") { try expectEqual(remainingText(seconds: 30), "meno di un minuto") }
 
-    // MARK: righe di stato del menu
-    runTest("riga di stato: infinito") {
-        try expectEqual(stateRowText(option: .infinite, secondsRemaining: nil),
-                        "☕️ Attivo — finché non disattivi")
+    // MARK: riga di stato del menu (senza emoji, con attività)
+    runTest("stato: spento") {
+        try expectEqual(statusLine(active: false, elapsedSeconds: nil, remainingSeconds: nil),
+                        "Caffè spento")
     }
-    runTest("riga di stato: finito") {
-        try expectEqual(stateRowText(option: .hours(1), secondsRemaining: 2520),
-                        "☕️ Attivo — 42 min rimanenti")
+    runTest("stato: attivo infinito con attività") {
+        try expectEqual(statusLine(active: true, elapsedSeconds: 4980, remainingSeconds: nil),
+                        "Caffè attivo · da 1 ora e 23 min")
     }
-    runTest("riga di stato: inattivo") {
-        try expectEqual(inactiveStateRowText, "😴 Il Mac può dormire")
+    runTest("stato: attivo con countdown") {
+        try expectEqual(statusLine(active: true, elapsedSeconds: 300, remainingSeconds: 2520),
+                        "Caffè attivo · da 5 min · 42 min rimanenti")
+    }
+    runTest("stato: attivo senza attività nota") {
+        try expectEqual(statusLine(active: true, elapsedSeconds: nil, remainingSeconds: nil),
+                        "Caffè attivo")
     }
 
     // MARK: messaggi notifica

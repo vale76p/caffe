@@ -43,19 +43,23 @@ public func remainingText(seconds: Int) -> String {
     }
 }
 
-/// Testo della riga di stato in cima al menu quando attivo.
-public func stateRowText(option: DurationOption, secondsRemaining: Int?) -> String {
-    switch option {
-    case .infinite:
-        return "☕️ Attivo — finché non disattivi"
-    default:
-        guard let s = secondsRemaining else { return "☕️ Attivo" }
-        return "☕️ Attivo — \(remainingText(seconds: s)) rimanenti"
-    }
-}
+/// Minuti di inattività dopo cui attivare lo screensaver quando il toggle è accesso.
+public let screensaverIdleSeconds = 45 * 60
 
-/// Testo della riga di stato quando inattivo.
-public let inactiveStateRowText = "😴 Il Mac può dormire"
+/// Riga di stato del menu: stato caffeinate, da quanto gira, countdown residuo.
+/// Nessuna emoji (richiesta utente). Formato: "Caffè spento" |
+/// "Caffè attivo · da 1 ora e 23 min" | "Caffè attivo · da 5 min · 42 min rimanenti".
+public func statusLine(active: Bool, elapsedSeconds: Int?, remainingSeconds: Int?) -> String {
+    guard active else { return "Caffè spento" }
+    var line = "Caffè attivo"
+    if let elapsed = elapsedSeconds {
+        line += " · da " + remainingText(seconds: elapsed)
+    }
+    if let remaining = remainingSeconds {
+        line += " · " + remainingText(seconds: remaining) + " rimanenti"
+    }
+    return line
+}
 
 /// Corpo della notifica all'attivazione.
 public func activationMessage(for option: DurationOption) -> String {

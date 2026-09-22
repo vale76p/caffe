@@ -2,6 +2,7 @@ import Foundation
 
 runCoreTests()
 runCaffeinateProcessTests()
+runScreensaverControlTests()
 
 print()
 if testFailed == 0 {
