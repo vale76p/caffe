@@ -1,6 +1,7 @@
 import Foundation
 
 runCoreTests()
+runCaffeinateProcessTests()
 
 print()
 if testFailed == 0 {

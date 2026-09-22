@@ -35,3 +35,13 @@ func expectNil(_ value: Any?, _ message: String = "") throws {
         throw TestFailure("\(prefix)atteso nil, avuto \(String(describing: value))")
     }
 }
+
+func expectTrue(_ condition: Bool, _ message: String = "") throws {
+    let prefix = message.isEmpty ? "" : "\(message): "
+    guard condition else { throw TestFailure("\(prefix)atteso true") }
+}
+
+func expectFalse(_ condition: Bool, _ message: String = "") throws {
+    let prefix = message.isEmpty ? "" : "\(message): "
+    guard !condition else { throw TestFailure("\(prefix)atteso false") }
+}
