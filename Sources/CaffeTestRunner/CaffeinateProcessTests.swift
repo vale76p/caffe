@@ -74,4 +74,15 @@ func runCaffeinateProcessTests() {
         c.stop()
         try expectNil(c.elapsedSeconds())
     }
+
+    runTest("flag caffeinate: default -d -i") {
+        try expectEqual(CaffeinateFlags.default.arguments, ["-d", "-i"])
+    }
+    runTest("flag caffeinate: combinazione completa") {
+        let f = CaffeinateFlags(display: true, idle: true, disk: true, system: true)
+        try expectEqual(f.arguments, ["-d", "-i", "-m", "-s"])
+    }
+    runTest("flag caffeinate: tutti spenti, nessun argomento") {
+        try expectEqual(CaffeinateFlags(display: false, idle: false, disk: false, system: false).arguments, [])
+    }
 }

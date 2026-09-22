@@ -11,8 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let caffeinate = CaffeinateProcess()
     private let screensaver = ScreensaverControl()
-    private var screensaverSwitch: NSSwitch?
-    private var loginSwitch: NSSwitch?
+    private var switches: [Int: NSSwitch] = [:]
+    private var flags = CaffeinateFlags.default
     private var ticker: Timer?
 
     private var stateRow: NSMenuItem!
@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.notify(deactivationMessage)
             self?.refresh()
         }
+        loadFlags()
         buildStatusItem()
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -39,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // .common: il countdown deve scorrere anche con il menu aperto (event tracking)
         RunLoop.main.add(t, forMode: .common)
         ticker = t
+        if UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch) {
+            try? caffeinate.start(option: .infinite, flags: flags)
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -89,12 +93,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(stopItem)
         menu.addItem(.separator())
 
-        let screensaverItem = switchItem(title: "Screensaver dopo 45 min", isOn: screensaver.isActive, tag: 1)
-        menu.addItem(screensaverItem)
-        let loginItem = switchItem(title: "Avvia al login",
-                                   isOn: SMAppService.mainApp.status == .enabled,
-                                   tag: 2)
-        menu.addItem(loginItem)
+        menu.addItem(sectionHeader("ASSERTIONS"))
+        menu.addItem(switchItem(title: "Impedisci sleep del display", isOn: flags.display, tag: 10, icon: "display"))
+        menu.addItem(switchItem(title: "Impedisci sleep da inattività", isOn: flags.idle, tag: 11, icon: "clock"))
+        menu.addItem(switchItem(title: "Impedisci sleep del disco", isOn: flags.disk, tag: 12, icon: "internaldrive"))
+        menu.addItem(switchItem(title: "Impedisci sleep di sistema (AC)", isOn: flags.system, tag: 13, icon: "bolt"))
+        menu.addItem(.separator())
+        menu.addItem(sectionHeader("IMPOSTAZIONI"))
+        menu.addItem(switchItem(title: "Attiva al lancio",
+                                isOn: UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch),
+                                tag: 3, icon: "play"))
+        menu.addItem(switchItem(title: "Avvia al login",
+                                isOn: SMAppService.mainApp.status == .enabled,
+                                tag: 2, icon: "power"))
+        menu.addItem(switchItem(title: "Mostra notifiche", isOn: showNotifications, tag: 4, icon: "bell"))
+        menu.addItem(switchItem(title: "Screensaver dopo 45 min",
+                                isOn: screensaver.isActive, tag: 1, icon: "deskclock"))
 
         let quitItem = NSMenuItem(title: "Esci",
                                   action: #selector(quit(_:)),
@@ -109,9 +123,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: switch del menu
 
-    private func switchItem(title: String, isOn: Bool, tag: Int) -> NSMenuItem {
+    private func switchItem(title: String, isOn: Bool, tag: Int, icon: String? = nil) -> NSMenuItem {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 26))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+        var constraints: [NSLayoutConstraint] = []
+        var leading: NSLayoutXAxisAnchor = view.leadingAnchor
+        var labelConstant: CGFloat = 16
+        if let icon,
+           let image = NSImage(systemSymbolName: icon, accessibilityDescription: nil) {
+            let iconView = NSImageView(image: image)
+            iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+            iconView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(iconView)
+            constraints += [
+                iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+                iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            ]
+            leading = iconView.trailingAnchor
+            labelConstant = 6
+        }
         let label = NSTextField(labelWithString: title)
         label.translatesAutoresizingMaskIntoConstraints = false
         let sw = NSSwitch(frame: .zero)
@@ -122,30 +152,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sw.action = #selector(toggleSwitch(_:))
         view.addSubview(label)
         view.addSubview(sw)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+        constraints += [
+            label.leadingAnchor.constraint(equalTo: leading, constant: labelConstant),
             label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             sw.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             sw.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ]
+        NSLayoutConstraint.activate(constraints)
+        item.view = view
+        switches[tag] = sw
+        return item
+    }
+
+    private func sectionHeader(_ title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 20))
+        let label = NSTextField(labelWithString: title)
+        label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ])
         item.view = view
-        switch tag {
-        case 1: screensaverSwitch = sw
-        default: loginSwitch = sw
-        }
         return item
     }
 
     @objc private func toggleSwitch(_ sender: NSSwitch) {
         switch sender.tag {
         case 1:
-            if sender.state == .on {
-                screensaver.enable()
-            } else {
-                screensaver.disable()
-            }
+            if sender.state == .on { screensaver.enable() } else { screensaver.disable() }
         case 2:
             toggleLoginCore()
+        case 3:
+            UserDefaults.standard.set(sender.state == .on, forKey: SettingsKeys.activateOnLaunch)
+        case 4:
+            UserDefaults.standard.set(sender.state == .on, forKey: SettingsKeys.showNotifications)
+        case 10:
+            flags.display = sender.state == .on
+            flagsChanged()
+        case 11:
+            flags.idle = sender.state == .on
+            flagsChanged()
+        case 12:
+            flags.disk = sender.state == .on
+            flagsChanged()
+        case 13:
+            flags.system = sender.state == .on
+            flagsChanged()
         default:
             break
         }
@@ -156,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func pickDuration(_ sender: NSMenuItem) {
         let option = durations[sender.representedObject as! Int]
         do {
-            try caffeinate.start(option: option)
+            try caffeinate.start(option: option, flags: flags)
         } catch {
             NSSound.beep()
             return
@@ -189,7 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 """
             alert.runModal()
         }
-        loginSwitch?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        switches[2]?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
     }
 
     @objc private func quit(_ sender: NSMenuItem) {
@@ -244,6 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func notify(_ body: String) {
         // UNUserNotificationCenter richiede un bundle: in sviluppo (swift run) niente notifiche
         guard Bundle.main.bundleIdentifier != nil else { return }
+        guard showNotifications else { return }
         let content = UNMutableNotificationContent()
         content.title = "Caffè"
         content.body = body
@@ -252,14 +309,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                             trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
+
+    // MARK: impostazioni persistenti (flag e preferenze)
+
+    private enum SettingsKeys {
+        static let activateOnLaunch = "CaffeActivateOnLaunch"
+        static let showNotifications = "CaffeShowNotifications"
+        static let flagDisplay = "CaffeFlagDisplay"
+        static let flagIdle = "CaffeFlagIdle"
+        static let flagDisk = "CaffeFlagDisk"
+        static let flagSystem = "CaffeFlagSystem"
+    }
+
+    private var showNotifications: Bool {
+        UserDefaults.standard.object(forKey: SettingsKeys.showNotifications) as? Bool ?? true
+    }
+
+    private func loadFlags() {
+        let d = UserDefaults.standard
+        flags = CaffeinateFlags(
+            display: d.object(forKey: SettingsKeys.flagDisplay) as? Bool ?? true,
+            idle: d.object(forKey: SettingsKeys.flagIdle) as? Bool ?? true,
+            disk: d.object(forKey: SettingsKeys.flagDisk) as? Bool ?? false,
+            system: d.object(forKey: SettingsKeys.flagSystem) as? Bool ?? false
+        )
+    }
+
+    private func saveFlags() {
+        let d = UserDefaults.standard
+        d.set(flags.display, forKey: SettingsKeys.flagDisplay)
+        d.set(flags.idle, forKey: SettingsKeys.flagIdle)
+        d.set(flags.disk, forKey: SettingsKeys.flagDisk)
+        d.set(flags.system, forKey: SettingsKeys.flagSystem)
+    }
+
+    private func flagsChanged() {
+        saveFlags()
+        if caffeinate.isRunning, let option = caffeinate.option {
+            try? caffeinate.start(option: option, flags: flags) // il figlio riparte coi nuovi flag
+        }
+    }
 }
 
 // Risincronizza gli switch a ogni apertura del menu (incluse modifiche esterne).
 extension AppDelegate: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         refresh()
-        screensaverSwitch?.state = screensaver.isActive ? .on : .off
-        loginSwitch?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        switches[1]?.state = screensaver.isActive ? .on : .off
+        switches[2]?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        switches[3]?.state = UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch) ? .on : .off
+        switches[4]?.state = showNotifications ? .on : .off
+        switches[10]?.state = flags.display ? .on : .off
+        switches[11]?.state = flags.idle ? .on : .off
+        switches[12]?.state = flags.disk ? .on : .off
+        switches[13]?.state = flags.system ? .on : .off
     }
 }
 

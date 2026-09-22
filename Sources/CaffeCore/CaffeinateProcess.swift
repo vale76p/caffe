@@ -5,6 +5,34 @@ private final class StopFlag {
     var manual = false
 }
 
+/// I flag di caffeinate selezionabili dal menu (sezione ASSERTIONS).
+public struct CaffeinateFlags: Equatable {
+    public var display: Bool  // -d: impedisci sleep del display
+    public var idle: Bool     // -i: impedisci sleep del sistema per inattività
+    public var disk: Bool     // -m: impedisci sleep del disco
+    public var system: Bool   // -s: impedisci sleep del sistema (solo alimentazione AC)
+
+    public init(display: Bool = true, idle: Bool = true, disk: Bool = false, system: Bool = false) {
+        self.display = display
+        self.idle = idle
+        self.disk = disk
+        self.system = system
+    }
+
+    /// Argomenti da passare a caffeinate, ordine stabile.
+    public var arguments: [String] {
+        var a: [String] = []
+        if display { a.append("-d") }
+        if idle { a.append("-i") }
+        if disk { a.append("-m") }
+        if system { a.append("-s") }
+        return a
+    }
+
+    /// Combinazione storica dell'app: -di.
+    public static let `default` = CaffeinateFlags(display: true, idle: true)
+}
+
 /// Gestisce `/usr/bin/caffeinate` come processo figlio.
 /// Spegnere = terminate() sul proprio figlio: mai pkill globale.
 public final class CaffeinateProcess {
@@ -48,19 +76,19 @@ public final class CaffeinateProcess {
     }
 
     /// Attiva una durata del menu, sostituendo l'eventuale attivazione in corso.
-    public func start(option: DurationOption) throws {
-        try start(seconds: option.seconds)
+    public func start(option: DurationOption, flags: CaffeinateFlags = .default) throws {
+        try start(seconds: option.seconds, flags: flags)
         self.option = option
     }
 
     /// Avvio a basso livello (usato dai test per durate brevi).
-    public func start(seconds: Int?) throws {
+    public func start(seconds: Int?, flags: CaffeinateFlags = .default) throws {
         stop()
 
         let flag = StopFlag()
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
-        var args = ["-di"]
+        var args = flags.arguments
         if let seconds {
             args += ["-t", String(seconds)]
         }
