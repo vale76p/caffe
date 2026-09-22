@@ -3,6 +3,9 @@ import PackageDescription
 
 let package = Package(
     name: "Caffe",
+    platforms: [
+        .macOS(.v13) // SMAppService (login item) richiede macOS 13
+    ],
     targets: [
         .target(
             name: "CaffeCore",
