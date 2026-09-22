@@ -31,9 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.refresh()
         }
         buildStatusItem()
-        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             self?.refresh()
         }
+        // .common: il countdown deve scorrere anche con il menu aperto (event tracking)
+        RunLoop.main.add(t, forMode: .common)
+        ticker = t
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

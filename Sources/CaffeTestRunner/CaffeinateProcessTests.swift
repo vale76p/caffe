@@ -13,8 +13,8 @@ func runCaffeinateProcessTests() {
     }
 
     runTest("stop manuale: nessun callback di scadenza") {
-        let c = CaffeinateProcess()
         let expiryQueue = DispatchQueue(label: "test.caffe.expiry1")
+        let c = CaffeinateProcess(expiryQueue: expiryQueue)
         var expired = false
         c.onNaturalExpiry = { expired = true }
         try c.start(option: .infinite)
@@ -35,6 +35,18 @@ func runCaffeinateProcessTests() {
         expiryQueue.sync { } // la coda ha finito di pulire lo stato
         try expectFalse(c.isRunning)
         try expectNil(c.option)
+    }
+
+    runTest("sostituzione: nessun callback di scadenza") {
+        let expiryQueue = DispatchQueue(label: "test.caffe.expiry3")
+        var expired = false
+        let c = CaffeinateProcess(expiryQueue: expiryQueue)
+        c.onNaturalExpiry = { expired = true }
+        try c.start(seconds: 1)
+        try c.start(option: .infinite) // sostituisce prima della scadenza
+        expiryQueue.sync { }
+        try expectFalse(expired)
+        c.stop()
     }
 
     runTest("riavvio: il nuovo figlio sostituisce il vecchio") {
