@@ -179,6 +179,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func requestNotificationAuthorizationIfNeeded() {
         guard !authRequested else { return }
         authRequested = true
+        // come notify(): senza bundle (sviluppo) il centro notifiche non esiste e
+        // UNUserNotificationCenter.current() crasha — non provarci nemmeno
+        guard Bundle.main.bundleIdentifier != nil else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
     }
 
