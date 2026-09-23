@@ -8,6 +8,7 @@ notifiche native e avvio al login. Rimpiazza l'applet AppleScript omonima.
 - **Clic sinistro** sull'icona ☕ = menu completo: slider di durata (Spento, 10 min, 30 min, 1 ora, 2 ore, 4 ore, 8 ore, Infinito), flag ASSERTIONS, impostazioni, versione.
 - **Clic destro (o ⌥-clic)** = attiva/disattiva subito con l'ultima durata usata.
 - "Disattiva ora" spegne subito; allo scadere del timer arriva una notifica.
+- Notifiche anti-flood: i cambi fatti col menu producono al massimo UN popup, alla chiusura del menu e solo se il timer è davvero cambiato; fuori dal menu (clic destro) arriva 2s dopo l'ultima azione.
 - "Attiva quando alimentato" / "Spegni su batteria": automazione in base all'alimentazione.
 - "Avvia al login" registra l'app in Impostazioni → Generali → Elementi login.
 - Uscendo dall'app il Mac torna dormibile.
