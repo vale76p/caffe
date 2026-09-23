@@ -47,6 +47,16 @@ public func sliderOption(at position: Int) -> DurationOption? {
     return sliderSteps[position]
 }
 
+/// Etichetta corta da mostrare sotto ciascuna posizione dello slider.
+public func sliderTickLabel(at position: Int) -> String {
+    guard let option = sliderOption(at: position) else { return "Spento" }
+    switch option {
+    case .minutes(let m): return "\(m)m"
+    case .hours(let h): return "\(h)h"
+    case .infinite: return "∞"
+    }
+}
+
 /// Formatta i secondi rimanenti: "42 min", "1 ora", "1 ora e 5 min", "2 ore e 30 min".
 public func remainingText(seconds: Int) -> String {
     precondition(seconds >= 0)

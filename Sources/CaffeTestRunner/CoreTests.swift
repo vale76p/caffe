@@ -44,6 +44,17 @@ func runCoreTests() {
         try expectEqual(sliderOption(at: 7), .infinite)
         try expectNil(sliderOption(at: 9))
     }
+    runTest("slider: etichette corte sotto le posizioni") {
+        try expectEqual(sliderTickLabel(at: 0), "Spento")
+        try expectEqual(sliderTickLabel(at: 1), "10m")
+        try expectEqual(sliderTickLabel(at: 2), "30m")
+        try expectEqual(sliderTickLabel(at: 3), "1h")
+        try expectEqual(sliderTickLabel(at: 4), "2h")
+        try expectEqual(sliderTickLabel(at: 5), "4h")
+        try expectEqual(sliderTickLabel(at: 6), "8h")
+        try expectEqual(sliderTickLabel(at: 7), "∞")
+        try expectEqual(sliderTickLabel(at: 99), "Spento")
+    }
 
     // MARK: remainingText
     runTest("remainingText: solo minuti") { try expectEqual(remainingText(seconds: 2520), "42 min") }

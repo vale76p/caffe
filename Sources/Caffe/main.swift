@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var switches: [Int: PillSwitchView] = [:]
     private var flags = CaffeinateFlags.default
     private var ticker: Timer?
+    private var pendingNotification: DispatchWorkItem?
     private var menu: NSMenu!
     private var lastPowerStateOnAC = true
 
@@ -76,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(sectionHeader("TIMER"))
         let sliderRow = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        durationSlider = DurationSliderRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: 40))
+        durationSlider = DurationSliderRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: 48))
         durationSlider.onApply = { [weak self] position in self?.applySliderPosition(position) }
         sliderRow.view = durationSlider
         menu.addItem(sliderRow)
@@ -171,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func toggleCaffeinate() {
         if caffeinate.isRunning {
             caffeinate.stop()
-            notify(deactivationMessage)
+            scheduleStateNotification(deactivationMessage)
         } else {
             let option = lastDurationOption()
             do {
@@ -181,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             ensureNotificationAuthorization()
-            notify(activationMessage(for: option))
+            scheduleStateNotification(activationMessage(for: option))
         }
         refresh()
     }
@@ -313,7 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Spento
             if caffeinate.isRunning {
                 caffeinate.stop()
-                notify(deactivationMessage)
+                scheduleStateNotification(deactivationMessage)
             }
             refresh()
             return
@@ -328,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(defaultDurations.firstIndex(of: option) ?? (defaultDurations.count - 1),
                                   forKey: SettingsKeys.lastDurationIndex)
         ensureNotificationAuthorization()
-        notify(activationMessage(for: option))
+        scheduleStateNotification(activationMessage(for: option))
         refresh()
     }
 
@@ -353,7 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func stopNow() {
         caffeinate.stop()
-        notify(deactivationMessage)
+        scheduleStateNotification(deactivationMessage)
         refresh()
     }
 
@@ -414,11 +415,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if onAC, d.bool(forKey: SettingsKeys.activateOnPlug), !caffeinate.isRunning {
             let option = lastDurationOption()
             try? caffeinate.start(option: option, flags: flags)
-            notify(activationMessage(for: option))
+            scheduleStateNotification(activationMessage(for: option))
             refresh()
         } else if !onAC, d.bool(forKey: SettingsKeys.deactivateOnUnplug), caffeinate.isRunning {
             caffeinate.stop()
-            notify(deactivationMessage)
+            scheduleStateNotification(deactivationMessage)
             refresh()
         }
     }
@@ -506,6 +507,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Notifica di cambio stato con debounce: durante l'esplorazione dello slider
+    /// (o click ripetuti) arriva un solo popup, 2s dopo l'ultima azione.
+    private func scheduleStateNotification(_ body: String) {
+        pendingNotification?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.notify(body) }
+        pendingNotification = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: work)
+    }
+
     private func notify(_ body: String) {
         // UNUserNotificationCenter richiede un bundle: in sviluppo (swift run) niente notifiche
         guard Bundle.main.bundleIdentifier != nil else { return }
@@ -588,42 +598,27 @@ private final class PillSwitchView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// Slider discreta di durata: 8 posizioni (0 = Spento … 7 = Infinito).
-/// Disegnata e gestita interamente da noi: i controlli NSMenu non consegnano
-/// eventi affidabilmente (lezione di NSSwitch).
+/// Slider discreta di durata in stile macOS: track tondo tinto d'accento,
+/// pomella bianca con bordo/ombra, tacche ed etichette corte sotto il track.
 private final class DurationSliderRow: NSView {
 
     var onApply: ((Int) -> Void)?
     private(set) var position: Int = 0
 
-    let valueLabel = NSTextField(labelWithString: "Spento")
-
     private let trackX0: CGFloat = 22
     private let trackX1: CGFloat = 278
+    private let trackY: CGFloat = 30
     private let steps = sliderSteps.count - 1 // 7
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        valueLabel.font = .systemFont(ofSize: 11)
-        valueLabel.textColor = .secondaryLabelColor
-        valueLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(valueLabel)
-        NSLayoutConstraint.activate([
-            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            valueLabel.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-        ])
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) non supportato") }
 
-    func setPosition(_ newValue: Int, animated: Bool = false) {
+    func setPosition(_ newValue: Int) {
         position = min(max(newValue, 0), steps)
-        valueLabel.stringValue = sliderLabel(for: position)
         needsDisplay = true
-    }
-
-    private func sliderLabel(for position: Int) -> String {
-        sliderOption(at: position)?.label ?? "Spento"
     }
 
     private func x(for position: Int) -> CGFloat {
@@ -636,29 +631,61 @@ private final class DurationSliderRow: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let y = bounds.height - 16
-        let track = NSBezierPath(roundedRect: NSRect(x: trackX0, y: y, width: trackX1 - trackX0, height: 4),
-                                 xRadius: 2, yRadius: 2)
-        NSColor.systemGray.withAlphaComponent(0.35).setFill()
+        // track tinta accento (stile NSSlider) + porzione fino alla pomella più solida
+        let track = NSBezierPath(roundedRect: NSRect(x: trackX0, y: trackY,
+                                                     width: trackX1 - trackX0, height: 5),
+                                 xRadius: 2.5, yRadius: 2.5)
+        NSColor.controlAccentColor.withAlphaComponent(0.30).setFill()
         track.fill()
-        // porzione attiva
         if position > 0 {
-            let active = NSBezierPath(roundedRect: NSRect(x: trackX0, y: y,
-                                                          width: x(for: position) - trackX0, height: 4),
-                                      xRadius: 2, yRadius: 2)
+            let active = NSBezierPath(roundedRect: NSRect(x: trackX0, y: trackY,
+                                                          width: x(for: position) - trackX0,
+                                                          height: 5),
+                                      xRadius: 2.5, yRadius: 2.5)
             NSColor.controlAccentColor.setFill()
             active.fill()
         }
-        // tacche
+
+        // tacche sottili sotto il track
         for p in 0...steps {
-            let dot = NSBezierPath(ovalIn: NSRect(x: x(for: p) - 1.5, y: y + 0.5, width: 3, height: 3))
-            NSColor.systemGray.withAlphaComponent(0.6).setFill()
-            dot.fill()
+            let tick = NSBezierPath(roundedRect: NSRect(x: x(for: p) - 0.75, y: trackY - 7,
+                                                        width: 1.5, height: 4),
+                                    xRadius: 0.75, yRadius: 0.75)
+            (p == position ? NSColor.controlAccentColor : NSColor.systemGray.withAlphaComponent(0.6)).setFill()
+            tick.fill()
         }
-        // pomella
-        let knob = NSBezierPath(ovalIn: NSRect(x: x(for: position) - 6, y: y - 4, width: 12, height: 12))
-        (position > 0 ? NSColor.controlAccentColor : NSColor.systemGray).setFill()
+
+        // pomella stile macOS: cerchio bianco, bordo grigio, ombra leggera
+        let knobRect = NSRect(x: x(for: position) - 8, y: trackY + 2.5 - 8, width: 16, height: 16)
+        let shadow = NSShadow()
+        shadow.shadowBlurRadius = 1.5
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+        // fix minimo (non compila su Swift/AppKit attuale): le C function legacy
+        // NSSaveGraphicsState/NSRestoreGraphicsState non sono esposte a Swift;
+        // si usano gli equivalenti NSGraphicsContext.save/restoreGraphicsState().
+        NSGraphicsContext.saveGraphicsState()
+        shadow.set()
+        let knob = NSBezierPath(ovalIn: knobRect)
+        NSColor.white.setFill()
         knob.fill()
+        NSShadow().set() // fix minimo: NSShadow non ha reset(); un'ombra default (vuota) la azzera
+        knob.lineWidth = 1
+        NSColor.systemGray.withAlphaComponent(0.5).setStroke()
+        knob.stroke()
+        NSGraphicsContext.restoreGraphicsState()
+
+        // etichette corte sotto le tacche; la selezionata in accento e semibold
+        for p in 0...steps {
+            let selected = (p == position)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 9, weight: selected ? .semibold : .regular),
+                .foregroundColor: selected ? NSColor.controlAccentColor : NSColor.secondaryLabelColor,
+            ]
+            let label = NSAttributedString(string: sliderTickLabel(at: p), attributes: attrs)
+            let size = label.size()
+            label.draw(at: NSPoint(x: x(for: p) - size.width / 2, y: 4))
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
