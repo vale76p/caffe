@@ -1,3 +1,30 @@
-.superpowers/
+# SwiftPM
 .build/
+.swiftpm/
+
+# Xcode (se un domani arriva un progetto Xcode)
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+
+# Artefatti di build (l'app compilata vive nelle Release, non nel git)
 *.app
+*.dmg
+*.zip
+*.dSYM
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Documentazione di processo (copia privata fuori repo)
+.superpowers/
+docs/superpowers/
