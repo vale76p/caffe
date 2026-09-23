@@ -3,6 +3,10 @@
 App solo menu-bar che tiene sveglio il Mac tramite `caffeinate`, con durate a tempo,
 notifiche native e avvio al login. Rimpiazza l'applet AppleScript omonima.
 
+> Repository privata. L'app compilata è in **Releases** (allegato `Caffè-*.zip`):
+> scompatta e trascina in `~/Applications`. Al primo avvio, se macOS chiede
+> conferma: clic destro → Apri (l'app non è notarizzata, firma ad-hoc).
+
 ## Uso
 
 - **Clic sinistro** sull'icona ☕ = menu completo: slider di durata (Spento, 10 min, 30 min, 1 ora, 2 ore, 4 ore, 8 ore, Infinito), flag ASSERTIONS, impostazioni, versione.
