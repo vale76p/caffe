@@ -22,8 +22,27 @@ func runCoreTests() {
     // MARK: defaultDurations
     runTest("durate predefinite del menu") {
         try expectEqual(defaultDurations, [
-            .minutes(10), .minutes(30), .hours(1), .hours(2), .hours(5), .infinite
+            .minutes(10), .minutes(30), .hours(1), .hours(2), .hours(4), .hours(8), .infinite
         ])
+    }
+
+    // MARK: slider di durata
+    runTest("slider: 8 posizioni, 0 = spento") {
+        try expectEqual(sliderSteps.count, 8)
+        try expectNil(sliderSteps[0])
+        try expectEqual(sliderSteps.last, .infinite)
+    }
+    runTest("slider: posizione dallo stato") {
+        try expectEqual(sliderPosition(active: false, option: nil), 0)
+        try expectEqual(sliderPosition(active: false, option: .hours(1)), 0)
+        try expectEqual(sliderPosition(active: true, option: .infinite), 7)
+        try expectEqual(sliderPosition(active: true, option: .hours(2)), 4)
+    }
+    runTest("slider: opzione dalla posizione") {
+        try expectNil(sliderOption(at: 0))
+        try expectEqual(sliderOption(at: 5), .hours(4))
+        try expectEqual(sliderOption(at: 7), .infinite)
+        try expectNil(sliderOption(at: 9))
     }
 
     // MARK: remainingText

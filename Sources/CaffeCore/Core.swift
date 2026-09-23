@@ -27,8 +27,25 @@ public enum DurationOption: Equatable {
 
 /// Le durate mostrate nel menu (personalizzabile da qui).
 public let defaultDurations: [DurationOption] = [
-    .minutes(10), .minutes(30), .hours(1), .hours(2), .hours(5), .infinite
+    .minutes(10), .minutes(30), .hours(1), .hours(2), .hours(4), .hours(8), .infinite
 ]
+
+/// Posizioni dello slider di durata nel menu: 0 = spento, poi le durate.
+public var sliderSteps: [DurationOption?] {
+    [nil] + defaultDurations
+}
+
+/// Posizione slider corrispondente allo stato attuale (0 se spento o durata non in lista).
+public func sliderPosition(active: Bool, option: DurationOption?) -> Int {
+    guard active, let option, let idx = defaultDurations.firstIndex(of: option) else { return 0 }
+    return idx + 1
+}
+
+/// Durata corrispondente a una posizione slider (nil = spento; fuori range = spento).
+public func sliderOption(at position: Int) -> DurationOption? {
+    guard sliderSteps.indices.contains(position) else { return nil }
+    return sliderSteps[position]
+}
 
 /// Formatta i secondi rimanenti: "42 min", "1 ora", "1 ora e 5 min", "2 ore e 30 min".
 public func remainingText(seconds: Int) -> String {

@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var headerTitleLabel: NSTextField!
     private var headerSubtitleLabel: NSTextField!
-    private var durationItems: [(item: NSMenuItem, check: NSImageView)] = []
+    private var durationSlider: DurationSliderRow!
     private var stopItem: NSMenuItem!
 
     // MARK: ciclo di vita
@@ -74,9 +74,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(headerItem())
         menu.addItem(.separator())
-        for (index, option) in durations.enumerated() {
-            menu.addItem(durationItem(option: option, index: index))
-        }
+        menu.addItem(sectionHeader("TIMER"))
+        let sliderRow = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        durationSlider = DurationSliderRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: 40))
+        durationSlider.onApply = { [weak self] position in self?.applySliderPosition(position) }
+        sliderRow.view = durationSlider
+        menu.addItem(sliderRow)
         menu.addItem(.separator())
 
         stopItem = actionRow(title: "Disattiva ora", icon: "stop.circle") { [weak self] in
@@ -305,40 +308,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: azioni menu
 
-    private func durationItem(option: DurationOption, index: Int) -> NSMenuItem {
-        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        let view = MenuRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: Grid.height))
-        var constraints: [NSLayoutConstraint] = []
-        let label = NSTextField(labelWithString: option.label)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        let check = NSImageView(image: NSImage())
-        check.contentTintColor = .labelColor
-        check.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
-        view.addSubview(check)
-        constraints += [
-            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Grid.labelX),
-            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            check.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Grid.trailing),
-            check.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-        ]
-        NSLayoutConstraint.activate(constraints)
-        view.onPick = { [weak self] in self?.pickDurationIndex(index) }
-        view.dismissOnPick = true
-        item.view = view
-        durationItems.append((item, check))
-        return item
-    }
-
-    private func pickDurationIndex(_ index: Int) {
-        let option = defaultDurations[index]
+    private func applySliderPosition(_ position: Int) {
+        guard let option = sliderOption(at: position) else {
+            // Spento
+            if caffeinate.isRunning {
+                caffeinate.stop()
+                notify(deactivationMessage)
+            }
+            refresh()
+            return
+        }
         do {
             try caffeinate.start(option: option, flags: flags)
         } catch {
             NSSound.beep()
+            refresh()
             return
         }
-        UserDefaults.standard.set(index, forKey: SettingsKeys.lastDurationIndex)
+        UserDefaults.standard.set(defaultDurations.firstIndex(of: option) ?? (defaultDurations.count - 1),
+                                  forKey: SettingsKeys.lastDurationIndex)
         ensureNotificationAuthorization()
         notify(activationMessage(for: option))
         refresh()
@@ -447,11 +435,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem.button?.image = statusIcon(active: active)
 
-        for (index, entry) in durationItems.enumerated() {
-            entry.check.image = (active && defaultDurations[index] == caffeinate.option)
-                ? NSImage(systemSymbolName: "checkmark", accessibilityDescription: "attiva")
-                : NSImage()
-        }
+        durationSlider.setPosition(sliderPosition(active: active, option: caffeinate.option))
         stopItem.isHidden = !active
     }
 
@@ -602,6 +586,92 @@ private final class PillSwitchView: NSView {
 
     // i click li gestisce la riga intera: la pillola non deve consumarli
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Slider discreta di durata: 8 posizioni (0 = Spento … 7 = Infinito).
+/// Disegnata e gestita interamente da noi: i controlli NSMenu non consegnano
+/// eventi affidabilmente (lezione di NSSwitch).
+private final class DurationSliderRow: NSView {
+
+    var onApply: ((Int) -> Void)?
+    private(set) var position: Int = 0
+
+    let valueLabel = NSTextField(labelWithString: "Spento")
+
+    private let trackX0: CGFloat = 22
+    private let trackX1: CGFloat = 278
+    private let steps = sliderSteps.count - 1 // 7
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        valueLabel.font = .systemFont(ofSize: 11)
+        valueLabel.textColor = .secondaryLabelColor
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(valueLabel)
+        NSLayoutConstraint.activate([
+            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            valueLabel.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) non supportato") }
+
+    func setPosition(_ newValue: Int, animated: Bool = false) {
+        position = min(max(newValue, 0), steps)
+        valueLabel.stringValue = sliderLabel(for: position)
+        needsDisplay = true
+    }
+
+    private func sliderLabel(for position: Int) -> String {
+        sliderOption(at: position)?.label ?? "Spento"
+    }
+
+    private func x(for position: Int) -> CGFloat {
+        trackX0 + CGFloat(position) / CGFloat(steps) * (trackX1 - trackX0)
+    }
+
+    private func position(at point: NSPoint) -> Int {
+        let t = (point.x - trackX0) / (trackX1 - trackX0)
+        return min(max(Int((t * CGFloat(steps)).rounded()), 0), steps)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let y = bounds.height - 16
+        let track = NSBezierPath(roundedRect: NSRect(x: trackX0, y: y, width: trackX1 - trackX0, height: 4),
+                                 xRadius: 2, yRadius: 2)
+        NSColor.systemGray.withAlphaComponent(0.35).setFill()
+        track.fill()
+        // porzione attiva
+        if position > 0 {
+            let active = NSBezierPath(roundedRect: NSRect(x: trackX0, y: y,
+                                                          width: x(for: position) - trackX0, height: 4),
+                                      xRadius: 2, yRadius: 2)
+            NSColor.controlAccentColor.setFill()
+            active.fill()
+        }
+        // tacche
+        for p in 0...steps {
+            let dot = NSBezierPath(ovalIn: NSRect(x: x(for: p) - 1.5, y: y + 0.5, width: 3, height: 3))
+            NSColor.systemGray.withAlphaComponent(0.6).setFill()
+            dot.fill()
+        }
+        // pomella
+        let knob = NSBezierPath(ovalIn: NSRect(x: x(for: position) - 6, y: y - 4, width: 12, height: 12))
+        (position > 0 ? NSColor.controlAccentColor : NSColor.systemGray).setFill()
+        knob.fill()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        setPosition(position(at: convert(event.locationInWindow, from: nil)))
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        setPosition(position(at: convert(event.locationInWindow, from: nil)))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onApply?(position)
+    }
 }
 
 /// Riga di menu view-based: click ovunque nella riga; può chiudere il menu dopo l'azione.
