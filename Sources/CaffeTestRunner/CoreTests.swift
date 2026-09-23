@@ -22,8 +22,38 @@ func runCoreTests() {
     // MARK: defaultDurations
     runTest("durate predefinite del menu") {
         try expectEqual(defaultDurations, [
-            .minutes(10), .minutes(30), .hours(1), .hours(2), .hours(5), .infinite
+            .minutes(10), .minutes(30), .hours(1), .hours(2), .hours(4), .hours(8), .infinite
         ])
+    }
+
+    // MARK: slider di durata
+    runTest("slider: 8 posizioni, 0 = spento") {
+        try expectEqual(sliderSteps.count, 8)
+        try expectNil(sliderSteps[0])
+        try expectEqual(sliderSteps.last, .infinite)
+    }
+    runTest("slider: posizione dallo stato") {
+        try expectEqual(sliderPosition(active: false, option: nil), 0)
+        try expectEqual(sliderPosition(active: false, option: .hours(1)), 0)
+        try expectEqual(sliderPosition(active: true, option: .infinite), 7)
+        try expectEqual(sliderPosition(active: true, option: .hours(2)), 4)
+    }
+    runTest("slider: opzione dalla posizione") {
+        try expectNil(sliderOption(at: 0))
+        try expectEqual(sliderOption(at: 5), .hours(4))
+        try expectEqual(sliderOption(at: 7), .infinite)
+        try expectNil(sliderOption(at: 9))
+    }
+    runTest("slider: etichette corte sotto le posizioni") {
+        try expectEqual(sliderTickLabel(at: 0), "Spento")
+        try expectEqual(sliderTickLabel(at: 1), "10m")
+        try expectEqual(sliderTickLabel(at: 2), "30m")
+        try expectEqual(sliderTickLabel(at: 3), "1h")
+        try expectEqual(sliderTickLabel(at: 4), "2h")
+        try expectEqual(sliderTickLabel(at: 5), "4h")
+        try expectEqual(sliderTickLabel(at: 6), "8h")
+        try expectEqual(sliderTickLabel(at: 7), "∞")
+        try expectEqual(sliderTickLabel(at: 99), "Spento")
     }
 
     // MARK: remainingText
@@ -34,22 +64,22 @@ func runCoreTests() {
     runTest("remainingText: ore e minuti") { try expectEqual(remainingText(seconds: 9000), "2 ore e 30 min") }
     runTest("remainingText: meno di un minuto") { try expectEqual(remainingText(seconds: 30), "meno di un minuto") }
 
-    // MARK: riga di stato del menu (senza emoji, con attività)
-    runTest("stato: spento") {
-        try expectEqual(statusLine(active: false, elapsedSeconds: nil, remainingSeconds: nil),
-                        "Caffè spento")
+    // MARK: righe di stato del menu (header su 2 righe, nessuna emoji)
+    runTest("titolo di stato") {
+        try expectEqual(statusTitle(active: false), "Caffè spento")
+        try expectEqual(statusTitle(active: true), "Caffè attivo")
     }
-    runTest("stato: attivo infinito con attività") {
-        try expectEqual(statusLine(active: true, elapsedSeconds: 4980, remainingSeconds: nil),
-                        "Caffè attivo · da 1 ora e 23 min")
+    runTest("sottotitolo: inattivo") {
+        try expectEqual(statusSubtitle(active: false, elapsedSeconds: nil, remainingSeconds: nil),
+                        "clic per attivare")
     }
-    runTest("stato: attivo con countdown") {
-        try expectEqual(statusLine(active: true, elapsedSeconds: 300, remainingSeconds: 2520),
-                        "Caffè attivo · da 5 min · 42 min rimanenti")
+    runTest("sottotitolo: attivo senza scadenza") {
+        try expectEqual(statusSubtitle(active: true, elapsedSeconds: 4980, remainingSeconds: nil),
+                        "da 1 ora e 23 min")
     }
-    runTest("stato: attivo senza attività nota") {
-        try expectEqual(statusLine(active: true, elapsedSeconds: nil, remainingSeconds: nil),
-                        "Caffè attivo")
+    runTest("sottotitolo: attivo con countdown") {
+        try expectEqual(statusSubtitle(active: true, elapsedSeconds: 300, remainingSeconds: 2520),
+                        "da 5 min · 42 min rimanenti")
     }
 
     // MARK: messaggi notifica
