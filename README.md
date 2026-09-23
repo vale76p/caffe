@@ -5,8 +5,11 @@ notifiche native e avvio al login. Rimpiazza l'applet AppleScript omonima.
 
 ## Uso
 
-- Clic sull'icona ☕ nella barra dei menu → scegli una durata (10 min … Infinito).
+- **Clic sinistro** sull'icona ☕ = attiva/disattiva subito con l'ultima durata usata.
+- **Clic destro (o ⌥-clic)** = menu completo: durate, flag ASSERTIONS, impostazioni, versione.
+- **Scorciatoia globale ⌥⌘K** = attiva/disattiva da qualsiasi app.
 - "Disattiva ora" spegne subito; allo scadere del timer arriva una notifica.
+- "Attiva quando alimentato" / "Spegni su batteria": automazione in base all'alimentazione.
 - "Avvia al login" registra l'app in Impostazioni → Generali → Elementi login.
 - Uscendo dall'app il Mac torna dormibile.
 
