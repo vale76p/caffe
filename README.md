@@ -30,6 +30,28 @@ notifiche native e avvio al login. Rimpiazza l'applet AppleScript omonima.
 
 Richiede solo i Command Line Tools (`xcode-select --install`).
 
+## Risoluzione problemi
+
+**`permission denied: ./build.sh`** — lo ZIP scaricato da GitHub perde il bit
+di eseguibilità (il `git clone` lo preserva). Soluzione:
+
+    bash build.sh
+    chmod +x build.sh && ./build.sh   # oppure, una volta per tutte
+
+**`swift: command not found` / `unable to get active developer directory`** —
+mancano i Command Line Tools e installarli richiede admin. Nessun passo di
+`build.sh` richiede admin: il muro è solo l'installazione dei tool. Su un Mac
+senza admin (es. aziendale): verifica se esistono già con `swift --version`;
+se mancano, non puoi compilare su quel Mac — usa l'app compilata dalla
+Release, che non richiede admin (sblocco con `xattr`, vedi sopra) e funziona
+da qualsiasi cartella della tua Home:
+
+    cd ~/Downloads && unzip -o Caffe-*.zip
+    xattr -dr com.apple.quarantine Caffè.app
+    open Caffè.app
+
+Diagnosi rapida: `xcode-select -p; swift --version; ls -l build.sh`.
+
 ## Personalizzare le durate
 
 Modifica `defaultDurations` in `Sources/CaffeCore/Core.swift`, poi riesegui `./build.sh`.
