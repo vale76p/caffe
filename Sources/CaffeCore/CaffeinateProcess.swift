@@ -63,6 +63,11 @@ public final class CaffeinateProcess {
         return process?.isRunning ?? false
     }
 
+    /// PID del figlio caffeinate, per verifica funzionale (nil se non attivo).
+    public var childProcessIdentifier: Int? {
+        return process.map { Int($0.processIdentifier) }
+    }
+
     /// Secondi alla scadenza (nil se non attivo o infinito).
     public func secondsRemaining(now: Date = Date()) -> Int? {
         guard let endDate else { return nil }
