@@ -106,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 tag: 3, icon: "play"))
         menu.addItem(switchItem(title: "Avvia al login",
                                 isOn: SMAppService.mainApp.status == .enabled,
-                                tag: 2, icon: "power"))
+                                tag: 2, icon: "person.crop.circle"))
         menu.addItem(switchItem(title: "Mostra notifiche", isOn: showNotifications, tag: 4, icon: "bell"))
         menu.addItem(switchItem(title: "Screensaver dopo 45 min",
                                 isOn: screensaver.isActive, tag: 1, icon: "deskclock"))
@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         menu.addItem(versionItem())
-        menu.addItem(actionRow(title: "Esci") { NSApp.terminate(nil) })
+        menu.addItem(actionRow(title: "Esci", icon: "power") { NSApp.terminate(nil) })
 
         for case let rowView as MenuRow in menu.items.compactMap({ $0.view }) {
             rowView.hostMenu = menu
@@ -207,9 +207,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         static let trailing: CGFloat = 16
     }
 
-    private func addIcon(_ symbol: String?, to view: NSView, constraints: inout [NSLayoutConstraint]) {
+    @discardableResult
+    private func addIcon(_ symbol: String?, to view: NSView, constraints: inout [NSLayoutConstraint]) -> NSImageView? {
         guard let symbol,
-              let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) else { return }
+              let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) else { return nil }
         let iconView = NSImageView(image: image)
         iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -219,13 +220,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             iconView.widthAnchor.constraint(equalToConstant: Grid.iconBoxWidth),
             iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ]
+        return iconView
     }
 
     private func switchItem(title: String, isOn: Bool, tag: Int, icon: String? = nil) -> NSMenuItem {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let view = MenuRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: Grid.height))
         var constraints: [NSLayoutConstraint] = []
-        addIcon(icon, to: view, constraints: &constraints)
+        let iconView = addIcon(icon, to: view, constraints: &constraints)
         let label = NSTextField(labelWithString: title)
         label.translatesAutoresizingMaskIntoConstraints = false
         let sw = PillSwitchView()
@@ -244,8 +246,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLayoutConstraint.activate(constraints)
         item.view = view
         view.onPick = { [weak self] in self?.toggleSetting(tag) }
+        register(row: view, label: label, icon: iconView)
         switches[tag] = sw
         return item
+    }
+
+    /// Registra etichetta e icona di una riga MenuRow per l'evidenziazione al passaggio.
+    private func register(row: MenuRow, label: NSTextField, icon: NSImageView?) {
+        row.rowLabel = label
+        row.rowIcon = icon
     }
 
     private func sectionHeader(_ title: String) -> NSMenuItem {
@@ -346,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let view = MenuRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: Grid.height))
         var constraints: [NSLayoutConstraint] = []
-        addIcon(icon, to: view, constraints: &constraints)
+        let iconView = addIcon(icon, to: view, constraints: &constraints)
         let label = NSTextField(labelWithString: title)
         label.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(label)
@@ -357,6 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLayoutConstraint.activate(constraints)
         view.onPick = pick
         view.dismissOnPick = true
+        register(row: view, label: label, icon: iconView)
         item.view = view
         return item
     }
@@ -735,11 +745,44 @@ private final class DurationSliderRow: NSView {
     }
 }
 
-/// Riga di menu view-based: click ovunque nella riga; può chiudere il menu dopo l'azione.
+/// Riga di menu view-based: click ovunque nella riga; può chiudere il menu dopo
+/// l'azione. Al passaggio del mouse si evidenzia come una voce di menu nativa
+/// (fondo blu e testo bianco), altrimenti non si capirebbe cosa si seleziona.
 private final class MenuRow: NSView {
     var onPick: (() -> Void)?
     var dismissOnPick = false
     weak var hostMenu: NSMenu?
+    weak var rowLabel: NSTextField?
+    weak var rowIcon: NSImageView?
+
+    private var hovered = false {
+        didSet {
+            needsDisplay = true
+            rowLabel?.textColor = hovered ? .white : .labelColor
+            rowIcon?.contentTintColor = hovered ? .white : nil
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if hovered {
+            NSColor.selectedContentBackgroundColor.setFill()
+            bounds.fill()
+        }
+        super.draw(dirtyRect)
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
     override func mouseDown(with event: NSEvent) { } // inghiottito: agiamo al rilascio
     override func mouseUp(with event: NSEvent) {
         onPick?()
