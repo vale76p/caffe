@@ -127,15 +127,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh()
     }
 
-    /// Clic sinistro = attiva/disattiva; clic destro (o ⌥-clic) = menu.
+    /// Clic sinistro = menu; clic destro (o ⌥-clic) = attiva/disattiva subito.
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { return }
         let rightClick = event.type == .rightMouseUp
         let optionClick = event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.option)
         if rightClick || optionClick {
-            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
-        } else {
             toggleCaffeinate()
+        } else {
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
         }
     }
 
@@ -429,12 +429,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh() {
         let active = caffeinate.isRunning
 
-        headerTitleLabel.stringValue = statusTitle(active: active)
-        headerSubtitleLabel.stringValue = statusSubtitle(active: active,
-                                                         elapsedSeconds: caffeinate.elapsedSeconds(),
-                                                         remainingSeconds: caffeinate.secondsRemaining())
+        // aggiorna i testi solo al cambiamento: durante il menu aperto il timer
+        // (1s, .common) chiama refresh() e ogni mutazione inutile del pulsante
+        // o delle view del menu rischia di disturbare la sessione di tracking
+        let title = statusTitle(active: active)
+        if headerTitleLabel.stringValue != title {
+            headerTitleLabel.stringValue = title
+        }
+        let subtitle = statusSubtitle(active: active,
+                                      elapsedSeconds: caffeinate.elapsedSeconds(),
+                                      remainingSeconds: caffeinate.secondsRemaining())
+        if headerSubtitleLabel.stringValue != subtitle {
+            headerSubtitleLabel.stringValue = subtitle
+        }
 
-        statusItem.button?.image = statusIcon(active: active)
+        if lastIconActive != active {
+            lastIconActive = active
+            statusItem.button?.image = active ? activeStatusIcon : inactiveStatusIcon
+        }
 
         durationSlider.setPosition(sliderPosition(active: active, option: caffeinate.option))
         stopItem.isHidden = !active
@@ -453,21 +465,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switches[13]?.isOn = flags.system
     }
 
-    private func statusIcon(active: Bool) -> NSImage? {
-        if active {
-            let image = NSImage(systemSymbolName: "cup.and.saucer.fill",
-                                accessibilityDescription: "Caffè attivo")
-            image?.isTemplate = true // contrasto pieno, segue chiaro/scuro
-            return image
-        } else {
-            let symbol = NSImage(systemSymbolName: "cup.and.saucer",
-                                  accessibilityDescription: "Caffè inattivo")
-            let gray = NSImage.SymbolConfiguration(paletteColors: [NSColor(white: 0.65, alpha: 1.0)])
-            let image = symbol?.withSymbolConfiguration(gray)
-            image?.isTemplate = false // rispetta il grigio chiaro richiesto
-            return image
-        }
-    }
+    // icone di stato costruite una volta sola: riassegnare ogni secondo una
+    // nuova NSImage al pulsante della status item faceva "staccare" il menu
+    // aperto (il ridisegno del pulsante rompeva l'ancoraggio del tracking)
+    private let activeStatusIcon: NSImage? = {
+        let image = NSImage(systemSymbolName: "cup.and.saucer.fill",
+                            accessibilityDescription: "Caffè attivo")
+        image?.isTemplate = true // contrasto pieno, segue chiaro/scuro
+        return image
+    }()
+
+    private let inactiveStatusIcon: NSImage? = {
+        let symbol = NSImage(systemSymbolName: "cup.and.saucer",
+                             accessibilityDescription: "Caffè inattivo")
+        let gray = NSImage.SymbolConfiguration(paletteColors: [NSColor(white: 0.65, alpha: 1.0)])
+        let image = symbol?.withSymbolConfiguration(gray)
+        image?.isTemplate = false // rispetta il grigio chiaro richiesto
+        return image
+    }()
+
+    private var lastIconActive: Bool?
 
     // MARK: notifiche
 
@@ -617,7 +634,9 @@ private final class DurationSliderRow: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) non supportato") }
 
     func setPosition(_ newValue: Int) {
-        position = min(max(newValue, 0), steps)
+        let clamped = min(max(newValue, 0), steps)
+        guard clamped != position else { return } // no-op: niente repaint inutili col menu aperto
+        position = clamped
         needsDisplay = true
     }
 
