@@ -1,5 +1,7 @@
 import AppKit
 import CaffeCore
+import Carbon.HIToolbox
+import IOKit.ps
 import ServiceManagement
 import UserNotifications
 
@@ -14,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var switches: [Int: PillSwitchView] = [:]
     private var flags = CaffeinateFlags.default
     private var ticker: Timer?
+    private var menu: NSMenu!
+    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyHandler: EventHandlerRef?
+    private var lastPowerStateOnAC = true
 
     private var stateRow: NSMenuItem!
     private var durationItems: [NSMenuItem] = []
@@ -38,6 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // .common: il countdown deve scorrere anche con il menu aperto (event tracking)
         RunLoop.main.add(t, forMode: .common)
         ticker = t
+        registerHotkey()
+        startPowerMonitoring()
         if UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch) {
             try? caffeinate.start(option: .infinite, flags: flags)
         }
@@ -107,6 +115,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(switchItem(title: "Mostra notifiche", isOn: showNotifications, tag: 4, icon: "bell"))
         menu.addItem(switchItem(title: "Screensaver dopo 45 min",
                                 isOn: screensaver.isActive, tag: 1, icon: "deskclock"))
+        menu.addItem(infoItem(title: "Scorciatoia: ⌥⌘K", icon: "keyboard"))
+        menu.addItem(switchItem(title: "Attiva quando alimentato",
+                                isOn: UserDefaults.standard.bool(forKey: SettingsKeys.activateOnPlug),
+                                tag: 5, icon: "powerplug"))
+        menu.addItem(switchItem(title: "Spegni su batteria",
+                                isOn: UserDefaults.standard.bool(forKey: SettingsKeys.deactivateOnUnplug),
+                                tag: 6, icon: "battery.75"))
+
+        menu.addItem(.separator())
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0"
+        let versionItem = NSMenuItem(title: "Versione \(version)", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
 
         let quitItem = NSMenuItem(title: "Esci",
                                   action: #selector(quit(_:)),
@@ -114,8 +135,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
 
+        self.menu = menu
         menu.delegate = self
-        statusItem.menu = menu
+        statusItem.button?.action = #selector(statusItemClicked(_:))
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        refresh()
+    }
+
+    /// Clic sinistro = attiva/disattiva; clic destro (o ⌥-clic) = menu.
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else { return }
+        let rightClick = event.type == .rightMouseUp
+        let optionClick = event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.option)
+        if rightClick || optionClick {
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+        } else {
+            toggleCaffeinate()
+        }
+    }
+
+    private func lastDurationOption() -> DurationOption {
+        let idx = UserDefaults.standard.integer(forKey: SettingsKeys.lastDurationIndex)
+        return defaultDurations.indices.contains(idx) ? defaultDurations[idx] : .infinite
+    }
+
+    /// Usato dal clic sull'icona e dalla scorciatoia globale.
+    private func toggleCaffeinate() {
+        if caffeinate.isRunning {
+            caffeinate.stop()
+            notify(deactivationMessage)
+        } else {
+            let option = lastDurationOption()
+            do {
+                try caffeinate.start(option: option, flags: flags)
+            } catch {
+                NSSound.beep()
+                return
+            }
+            ensureNotificationAuthorization()
+            notify(activationMessage(for: option))
+        }
         refresh()
     }
 
@@ -162,6 +221,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
+    private func infoItem(title: String, icon: String) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+        let iconView = NSImageView(image: NSImage(systemSymbolName: icon, accessibilityDescription: nil)
+                                    ?? NSImage())
+        iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        let label = NSTextField(labelWithString: title)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(iconView)
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 6),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+        item.view = view
+        return item
+    }
+
     private func sectionHeader(_ title: String) -> NSMenuItem {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 20))
@@ -191,6 +272,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let newValue = !showNotifications
             d.set(newValue, forKey: SettingsKeys.showNotifications)
             if newValue { ensureNotificationAuthorization() }
+        case 5:
+            d.set(!d.bool(forKey: SettingsKeys.activateOnPlug), forKey: SettingsKeys.activateOnPlug)
+        case 6:
+            d.set(!d.bool(forKey: SettingsKeys.deactivateOnUnplug), forKey: SettingsKeys.deactivateOnUnplug)
         case 10:
             flags.display.toggle()
             flagsChanged()
@@ -219,6 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSSound.beep()
             return
         }
+        UserDefaults.standard.set(sender.representedObject as! Int, forKey: SettingsKeys.lastDurationIndex)
         ensureNotificationAuthorization()
         notify(activationMessage(for: option))
         refresh()
@@ -253,6 +339,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    // MARK: scorciatoia globale e alimentatore
+
+    private func registerHotkey() {
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                      eventKind: UInt32(kEventHotKeyPressed))
+        let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        let handler: EventHandlerUPP = { _, _, userData in
+            guard let userData else { return noErr }
+            let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+            DispatchQueue.main.async { delegate.toggleCaffeinate() }
+            return noErr
+        }
+        InstallEventHandler(GetApplicationEventTarget(), handler, 1, &eventType, selfPtr, &hotKeyHandler)
+        // fix minimo: il terzo parametro è la struct EventHotKeyID {signature, id}, non un Int
+        let hotKeyID = EventHotKeyID(signature: OSType(0), id: UInt32(1))
+        RegisterEventHotKey(UInt32(kVK_ANSI_K), UInt32(optionKey | cmdKey), hotKeyID,
+                            GetApplicationEventTarget(), 0, &hotKeyRef)
+    }
+
+    private func startPowerMonitoring() {
+        lastPowerStateOnAC = isOnACPower()
+        let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        let callback: IOPowerSourceCallbackType = { userData in
+            guard let userData else { return }
+            let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+            DispatchQueue.main.async { delegate.powerSourceChanged() }
+        }
+        guard let source = IOPSNotificationCreateRunLoopSource(callback, selfPtr)?.takeRetainedValue() else {
+            return
+        }
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
+    }
+
+    private func isOnACPower() -> Bool {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
+            return true
+        }
+        for ps in sources {
+            if let desc = IOPSGetPowerSourceDescription(snapshot, ps)?.takeUnretainedValue() as? [String: Any],
+               let state = desc[kIOPSPowerSourceStateKey] as? String {
+                return state == kIOPSACPowerValue // fix minimo: la costante IOKit è kIOPSACPowerValue
+            }
+        }
+        return true
+    }
+
+    private func powerSourceChanged() {
+        let onAC = isOnACPower()
+        defer { lastPowerStateOnAC = onAC }
+        guard onAC != lastPowerStateOnAC else { return }
+        let d = UserDefaults.standard
+        if onAC, d.bool(forKey: SettingsKeys.activateOnPlug), !caffeinate.isRunning {
+            let option = lastDurationOption()
+            try? caffeinate.start(option: option, flags: flags)
+            notify(activationMessage(for: option))
+            refresh()
+        } else if !onAC, d.bool(forKey: SettingsKeys.deactivateOnUnplug), caffeinate.isRunning {
+            caffeinate.stop()
+            notify(deactivationMessage)
+            refresh()
+        }
+    }
+
     // MARK: aggiornamento UI
 
     private func refresh() {
@@ -276,6 +426,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switches[2]?.isOn = (SMAppService.mainApp.status == .enabled)
         switches[3]?.isOn = UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch)
         switches[4]?.isOn = showNotifications
+        switches[5]?.isOn = UserDefaults.standard.bool(forKey: SettingsKeys.activateOnPlug)
+        switches[6]?.isOn = UserDefaults.standard.bool(forKey: SettingsKeys.deactivateOnUnplug)
         switches[10]?.isOn = flags.display
         switches[11]?.isOn = flags.idle
         switches[12]?.isOn = flags.disk
@@ -358,6 +510,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         static let flagIdle = "CaffeFlagIdle"
         static let flagDisk = "CaffeFlagDisk"
         static let flagSystem = "CaffeFlagSystem"
+        static let activateOnPlug = "CaffeActivateOnPlug"
+        static let deactivateOnUnplug = "CaffeDeactivateOnUnplug"
+        static let lastDurationIndex = "CaffeLastDurationIndex"
     }
 
     private var showNotifications: Bool {
