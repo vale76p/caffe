@@ -3,9 +3,15 @@
 App solo menu-bar che tiene sveglio il Mac tramite `caffeinate`, con durate a tempo,
 notifiche native e avvio al login. Rimpiazza l'applet AppleScript omonima.
 
-> Repository privata. L'app compilata è in **Releases** (allegato `Caffè-*.zip`):
-> scompatta e trascina in `~/Applications`. Al primo avvio, se macOS chiede
-> conferma: clic destro → Apri (l'app non è notarizzata, firma ad-hoc).
+> Repository privata. L'app compilata è in **Releases** (allegato `Caffè-*.zip`).
+> L'app è firmata **ad-hoc** (non notarizzata): dopo aver scompattato e copiato
+> `Caffè.app` in `~/Applications`, macOS la blocca al primo avvio. Per sbloccarla
+> (una volta sola, poi parte normale):
+>
+>     xattr -dr com.apple.quarantine ~/Applications/Caffè.app
+>
+> (equivalente: Impostazioni di sistema → Privacy e sicurezza → **Apri comunque**).
+> Alternativa senza alcuno sblocco: clonare la repo e compilare con `./build.sh`.
 
 ## Uso
 
