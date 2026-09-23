@@ -32,8 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         caffeinate.onNaturalExpiry = { [weak self] in
-            self?.notify(deactivationMessage)
-            self?.refresh()
+            guard let self else { return }
+            // la scadenza si notifica da sé: aggiorna lo snapshot del menu aperto
+            // per non emettere un secondo popup alla chiusura
+            self.menuOpenState = nil
+            self.notify(deactivationMessage)
+            self.refresh()
         }
         loadFlags()
         buildStatusItem()
@@ -529,9 +533,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Notifica di cambio stato con debounce: durante l'esplorazione dello slider
-    /// (o click ripetuti) arriva un solo popup, 2s dopo l'ultima azione.
+    /// Stato (acceso + durata) al momento dell'apertura del menu: serve a
+    /// notificare UN solo popup alla CHIUSURA, e solo se il timer è cambiato.
+    private var menuOpenState: (active: Bool, option: DurationOption?)?
+
+    /// Notifica di cambio stato. Con il menu aperto: nessun popup (alla chiusura
+    /// se ne emette al massimo uno, se il timer è cambiato). Con il menu chiuso:
+    /// debounce 2s, così click ripetuti producono un solo avviso.
     private func scheduleStateNotification(_ body: String) {
+        if menuOpenState != nil { return }
         pendingNotification?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.notify(body) }
         pendingNotification = work
@@ -742,9 +752,28 @@ extension AppDelegate: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         refresh()
         syncSwitches()
+        if menuOpenState == nil {
+            pendingNotification?.cancel() // nessun popup durante il menu
+            menuOpenState = (caffeinate.isRunning, caffeinate.option)
+        }
     }
 
     func menuDidClose(_ menu: NSMenu) {
+        // un solo popup per sessione di menu, e solo se il timer è davvero cambiato
+        // rispetto all'apertura (giochicchiare col tornare al valore iniziale = silenzio)
+        if let open = menuOpenState {
+            let active = caffeinate.isRunning
+            let option = caffeinate.option
+            let changed = active != open.active || (active && option != open.option)
+            if changed {
+                if active, let option {
+                    notify(activationMessage(for: option))
+                } else {
+                    notify(deactivationMessage)
+                }
+            }
+        }
+        menuOpenState = nil
         syncSwitches() // niente visual "congelato" azzurro dopo la chiusura
         statusItem.menu = nil // ri-armare il dispatch custom: destro/⌥ = toggle
     }
