@@ -1,6 +1,5 @@
 import AppKit
 import CaffeCore
-import Carbon.HIToolbox
 import IOKit.ps
 import ServiceManagement
 import UserNotifications
@@ -17,8 +16,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var flags = CaffeinateFlags.default
     private var ticker: Timer?
     private var menu: NSMenu!
-    private var hotKeyRef: EventHotKeyRef?
-    private var hotKeyHandler: EventHandlerRef?
     private var lastPowerStateOnAC = true
 
     private var stateRow: NSMenuItem!
@@ -44,7 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // .common: il countdown deve scorrere anche con il menu aperto (event tracking)
         RunLoop.main.add(t, forMode: .common)
         ticker = t
-        registerHotkey()
         startPowerMonitoring()
         if UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch) {
             try? caffeinate.start(option: .infinite, flags: flags)
@@ -115,7 +111,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(switchItem(title: "Mostra notifiche", isOn: showNotifications, tag: 4, icon: "bell"))
         menu.addItem(switchItem(title: "Screensaver dopo 45 min",
                                 isOn: screensaver.isActive, tag: 1, icon: "deskclock"))
-        menu.addItem(infoItem(title: "Scorciatoia: ⌥⌘K", icon: "keyboard"))
         menu.addItem(switchItem(title: "Attiva quando alimentato",
                                 isOn: UserDefaults.standard.bool(forKey: SettingsKeys.activateOnPlug),
                                 tag: 5, icon: "powerplug"))
@@ -221,28 +216,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    private func infoItem(title: String, icon: String) -> NSMenuItem {
-        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
-        let iconView = NSImageView(image: NSImage(systemSymbolName: icon, accessibilityDescription: nil)
-                                    ?? NSImage())
-        iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        let label = NSTextField(labelWithString: title)
-        label.textColor = .secondaryLabelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(iconView)
-        view.addSubview(label)
-        NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            label.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 6),
-            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-        ])
-        item.view = view
-        return item
-    }
-
     private func sectionHeader(_ title: String) -> NSMenuItem {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 20))
@@ -339,24 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    // MARK: scorciatoia globale e alimentatore
-
-    private func registerHotkey() {
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
-                                      eventKind: UInt32(kEventHotKeyPressed))
-        let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        let handler: EventHandlerUPP = { _, _, userData in
-            guard let userData else { return noErr }
-            let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
-            DispatchQueue.main.async { delegate.toggleCaffeinate() }
-            return noErr
-        }
-        InstallEventHandler(GetApplicationEventTarget(), handler, 1, &eventType, selfPtr, &hotKeyHandler)
-        // fix minimo: il terzo parametro è la struct EventHotKeyID {signature, id}, non un Int
-        let hotKeyID = EventHotKeyID(signature: OSType(0), id: UInt32(1))
-        RegisterEventHotKey(UInt32(kVK_ANSI_K), UInt32(optionKey | cmdKey), hotKeyID,
-                            GetApplicationEventTarget(), 0, &hotKeyRef)
-    }
+    // MARK: alimentatore
 
     private func startPowerMonitoring() {
         lastPowerStateOnAC = isOnACPower()
