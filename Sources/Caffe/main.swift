@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let caffeinate = CaffeinateProcess()
     private let screensaver = ScreensaverControl()
-    private var switches: [Int: NSSwitch] = [:]
+    private var switches: [Int: PillSwitchView] = [:]
     private var flags = CaffeinateFlags.default
     private var ticker: Timer?
 
@@ -142,10 +142,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let label = NSTextField(labelWithString: title)
         label.translatesAutoresizingMaskIntoConstraints = false
-        let sw = DisplaySwitch(frame: .zero)
+        let sw = PillSwitchView()
+        sw.isOn = isOn
         sw.translatesAutoresizingMaskIntoConstraints = false
-        sw.tag = tag
-        sw.state = isOn ? .on : .off
         view.addSubview(label)
         view.addSubview(sw)
         constraints += [
@@ -153,6 +152,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             sw.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             sw.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            sw.widthAnchor.constraint(equalToConstant: 38),
+            sw.heightAnchor.constraint(equalToConstant: 22),
         ]
         NSLayoutConstraint.activate(constraints)
         item.view = view
@@ -271,14 +272,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func syncSwitches() {
-        switches[1]?.state = screensaver.isActive ? .on : .off
-        switches[2]?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
-        switches[3]?.state = UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch) ? .on : .off
-        switches[4]?.state = showNotifications ? .on : .off
-        switches[10]?.state = flags.display ? .on : .off
-        switches[11]?.state = flags.idle ? .on : .off
-        switches[12]?.state = flags.disk ? .on : .off
-        switches[13]?.state = flags.system ? .on : .off
+        switches[1]?.isOn = screensaver.isActive
+        switches[2]?.isOn = (SMAppService.mainApp.status == .enabled)
+        switches[3]?.isOn = UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch)
+        switches[4]?.isOn = showNotifications
+        switches[10]?.isOn = flags.display
+        switches[11]?.isOn = flags.idle
+        switches[12]?.isOn = flags.disk
+        switches[13]?.isOn = flags.system
     }
 
     private func statusIcon(active: Bool) -> NSImage? {
@@ -389,11 +390,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Interruttore puramente visivo: i click li gestisce la riga intera.
-/// (NSSwitch dentro NSMenuItem.view non consegna in modo affidabile la propria
-/// azione su macOS: il click commutava solo il colore senza aggiornare lo stato.)
-private final class DisplaySwitch: NSSwitch {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+/// Interruttore disegnato a mano: NSSwitch dentro un NSMenu non ridisegna
+/// il proprio stato (resta sempre grigio), qui il repaint è garantito da noi.
+private final class PillSwitchView: NSView {
+    var isOn = false {
+        didSet { needsDisplay = true }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let pill = NSBezierPath(roundedRect: bounds,
+                                xRadius: bounds.height / 2,
+                                yRadius: bounds.height / 2)
+        (isOn ? NSColor.controlAccentColor : NSColor.systemGray.withAlphaComponent(0.45)).setFill()
+        pill.fill()
+
+        let knobD = bounds.height - 4
+        let knobX = isOn ? bounds.width - knobD - 2 : 2
+        let knob = NSBezierPath(ovalIn: NSRect(x: knobX, y: 2, width: knobD, height: knobD))
+        NSColor.white.setFill()
+        knob.fill()
+    }
 }
 
 /// Riga-switch cliccabile ovunque: azione al rilascio del mouse, come le voci menu.
