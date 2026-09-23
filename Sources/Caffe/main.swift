@@ -18,8 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: NSMenu!
     private var lastPowerStateOnAC = true
 
-    private var stateRow: NSMenuItem!
-    private var durationItems: [NSMenuItem] = []
+    private var headerTitleLabel: NSTextField!
+    private var headerSubtitleLabel: NSTextField!
+    private var durationItems: [(item: NSMenuItem, check: NSImageView)] = []
     private var stopItem: NSMenuItem!
 
     // MARK: ciclo di vita
@@ -70,27 +71,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
-        stateRow = NSMenuItem(title: "Caffè spento", action: nil, keyEquivalent: "")
-        stateRow.isEnabled = false
-
         let menu = NSMenu()
-        menu.addItem(stateRow)
+        menu.addItem(headerItem())
         menu.addItem(.separator())
         for (index, option) in durations.enumerated() {
-            let item = NSMenuItem(title: option.label,
-                                  action: #selector(pickDuration(_:)),
-                                  keyEquivalent: "")
-            item.target = self
-            item.representedObject = index
-            menu.addItem(item)
-            durationItems.append(item)
+            menu.addItem(durationItem(option: option, index: index))
         }
         menu.addItem(.separator())
 
-        stopItem = NSMenuItem(title: "Disattiva ora",
-                              action: #selector(stopNow(_:)),
-                              keyEquivalent: "")
-        stopItem.target = self
+        stopItem = actionRow(title: "Disattiva ora", icon: "stop.circle") { [weak self] in
+            self?.stopNow()
+        }
         stopItem.isHidden = true
         menu.addItem(stopItem)
         menu.addItem(.separator())
@@ -119,17 +110,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 tag: 6, icon: "battery.75"))
 
         menu.addItem(.separator())
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0"
-        let versionItem = NSMenuItem(title: "Versione \(version)", action: nil, keyEquivalent: "")
-        versionItem.isEnabled = false
-        menu.addItem(versionItem)
+        menu.addItem(versionItem())
+        menu.addItem(actionRow(title: "Esci") { NSApp.terminate(nil) })
 
-        let quitItem = NSMenuItem(title: "Esci",
-                                  action: #selector(quit(_:)),
-                                  keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-
+        for case let rowView as MenuRow in menu.items.compactMap({ $0.view }) {
+            rowView.hostMenu = menu
+        }
         self.menu = menu
         menu.delegate = self
         statusItem.button?.action = #selector(statusItemClicked(_:))
@@ -147,6 +133,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             toggleCaffeinate()
         }
+    }
+
+    private func headerItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: Grid.width, height: 44))
+        headerTitleLabel = NSTextField(labelWithString: statusTitle(active: false))
+        headerTitleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        headerSubtitleLabel = NSTextField(labelWithString: statusSubtitle(active: false,
+                                                                         elapsedSeconds: nil,
+                                                                         remainingSeconds: nil))
+        headerSubtitleLabel.font = .systemFont(ofSize: 11)
+        headerSubtitleLabel.textColor = .secondaryLabelColor
+        for label in [headerTitleLabel!, headerSubtitleLabel!] {
+            label.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(label)
+        }
+        NSLayoutConstraint.activate([
+            headerTitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Grid.iconBoxX),
+            headerTitleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
+            headerSubtitleLabel.leadingAnchor.constraint(equalTo: headerTitleLabel.leadingAnchor),
+            headerSubtitleLabel.topAnchor.constraint(equalTo: headerTitleLabel.bottomAnchor, constant: 2),
+        ])
+        item.view = view
+        return item
     }
 
     private func lastDurationOption() -> DurationOption {
@@ -175,25 +185,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: switch del menu
 
+    private enum Grid {
+        static let width: CGFloat = 300
+        static let height: CGFloat = 26
+        static let iconBoxX: CGFloat = 16
+        static let iconBoxWidth: CGFloat = 20
+        static let labelX: CGFloat = 42
+        static let trailing: CGFloat = 16
+    }
+
+    private func addIcon(_ symbol: String?, to view: NSView, constraints: inout [NSLayoutConstraint]) {
+        guard let symbol,
+              let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) else { return }
+        let iconView = NSImageView(image: image)
+        iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(iconView)
+        constraints += [
+            iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Grid.iconBoxX),
+            iconView.widthAnchor.constraint(equalToConstant: Grid.iconBoxWidth),
+            iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ]
+    }
+
     private func switchItem(title: String, isOn: Bool, tag: Int, icon: String? = nil) -> NSMenuItem {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        let view = SwitchRow(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+        let view = MenuRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: Grid.height))
         var constraints: [NSLayoutConstraint] = []
-        var leading: NSLayoutXAxisAnchor = view.leadingAnchor
-        var labelConstant: CGFloat = 16
-        if let icon,
-           let image = NSImage(systemSymbolName: icon, accessibilityDescription: nil) {
-            let iconView = NSImageView(image: image)
-            iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
-            iconView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(iconView)
-            constraints += [
-                iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-                iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            ]
-            leading = iconView.trailingAnchor
-            labelConstant = 6
-        }
+        addIcon(icon, to: view, constraints: &constraints)
         let label = NSTextField(labelWithString: title)
         label.translatesAutoresizingMaskIntoConstraints = false
         let sw = PillSwitchView()
@@ -202,17 +221,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addSubview(label)
         view.addSubview(sw)
         constraints += [
-            label.leadingAnchor.constraint(equalTo: leading, constant: labelConstant),
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Grid.labelX),
             label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            sw.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            sw.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Grid.trailing),
             sw.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             sw.widthAnchor.constraint(equalToConstant: 38),
             sw.heightAnchor.constraint(equalToConstant: 22),
         ]
         NSLayoutConstraint.activate(constraints)
         item.view = view
-        switches[tag] = sw
         view.onPick = { [weak self] in self?.toggleSetting(tag) }
+        switches[tag] = sw
         return item
     }
 
@@ -226,6 +245,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addSubview(label)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+        item.view = view
+        return item
+    }
+
+    private func versionItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: Grid.width, height: 22))
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0"
+        let label = NSTextField(labelWithString: "Versione \(version)")
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ])
         item.view = view
@@ -269,21 +305,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: azioni menu
 
-    @objc private func pickDuration(_ sender: NSMenuItem) {
-        let option = durations[sender.representedObject as! Int]
+    private func durationItem(option: DurationOption, index: Int) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let view = MenuRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: Grid.height))
+        var constraints: [NSLayoutConstraint] = []
+        let label = NSTextField(labelWithString: option.label)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let check = NSImageView(image: NSImage())
+        check.contentTintColor = .labelColor
+        check.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        view.addSubview(check)
+        constraints += [
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Grid.labelX),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            check.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Grid.trailing),
+            check.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ]
+        NSLayoutConstraint.activate(constraints)
+        view.onPick = { [weak self] in self?.pickDurationIndex(index) }
+        view.dismissOnPick = true
+        item.view = view
+        durationItems.append((item, check))
+        return item
+    }
+
+    private func pickDurationIndex(_ index: Int) {
+        let option = defaultDurations[index]
         do {
             try caffeinate.start(option: option, flags: flags)
         } catch {
             NSSound.beep()
             return
         }
-        UserDefaults.standard.set(sender.representedObject as! Int, forKey: SettingsKeys.lastDurationIndex)
+        UserDefaults.standard.set(index, forKey: SettingsKeys.lastDurationIndex)
         ensureNotificationAuthorization()
         notify(activationMessage(for: option))
         refresh()
     }
 
-    @objc private func stopNow(_ sender: NSMenuItem) {
+    private func actionRow(title: String, icon: String? = nil, pick: @escaping () -> Void) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let view = MenuRow(frame: NSRect(x: 0, y: 0, width: Grid.width, height: Grid.height))
+        var constraints: [NSLayoutConstraint] = []
+        addIcon(icon, to: view, constraints: &constraints)
+        let label = NSTextField(labelWithString: title)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        constraints += [
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Grid.labelX),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ]
+        NSLayoutConstraint.activate(constraints)
+        view.onPick = pick
+        view.dismissOnPick = true
+        item.view = view
+        return item
+    }
+
+    private func stopNow() {
         caffeinate.stop()
         notify(deactivationMessage)
         refresh()
@@ -306,10 +386,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 """
             alert.runModal()
         }
-    }
-
-    @objc private func quit(_ sender: NSMenuItem) {
-        NSApp.terminate(nil)
     }
 
     // MARK: alimentatore
@@ -364,15 +440,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh() {
         let active = caffeinate.isRunning
 
-        stateRow.title = statusLine(active: caffeinate.isRunning,
-                                    elapsedSeconds: caffeinate.elapsedSeconds(),
-                                    remainingSeconds: caffeinate.secondsRemaining())
+        headerTitleLabel.stringValue = statusTitle(active: active)
+        headerSubtitleLabel.stringValue = statusSubtitle(active: active,
+                                                         elapsedSeconds: caffeinate.elapsedSeconds(),
+                                                         remainingSeconds: caffeinate.secondsRemaining())
 
         statusItem.button?.image = statusIcon(active: active)
 
-        for item in durationItems {
-            let index = item.representedObject as! Int
-            item.state = (active && durations[index] == caffeinate.option) ? .on : .off
+        for (index, entry) in durationItems.enumerated() {
+            entry.check.image = (active && defaultDurations[index] == caffeinate.option)
+                ? NSImage(systemSymbolName: "checkmark", accessibilityDescription: "attiva")
+                : NSImage()
         }
         stopItem.isHidden = !active
     }
@@ -526,11 +604,16 @@ private final class PillSwitchView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// Riga-switch cliccabile ovunque: azione al rilascio del mouse, come le voci menu.
-private final class SwitchRow: NSView {
+/// Riga di menu view-based: click ovunque nella riga; può chiudere il menu dopo l'azione.
+private final class MenuRow: NSView {
     var onPick: (() -> Void)?
+    var dismissOnPick = false
+    weak var hostMenu: NSMenu?
     override func mouseDown(with event: NSEvent) { } // inghiottito: agiamo al rilascio
-    override func mouseUp(with event: NSEvent) { onPick?() }
+    override func mouseUp(with event: NSEvent) {
+        onPick?()
+        if dismissOnPick { hostMenu?.cancelTracking() }
+    }
 }
 
 // Risincronizza gli switch a ogni apertura del menu (incluse modifiche esterne).

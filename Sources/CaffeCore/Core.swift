@@ -46,19 +46,19 @@ public func remainingText(seconds: Int) -> String {
 /// Minuti di inattività dopo cui attivare lo screensaver quando il toggle è accesso.
 public let screensaverIdleSeconds = 45 * 60
 
-/// Riga di stato del menu: stato caffeinate, da quanto gira, countdown residuo.
-/// Nessuna emoji (richiesta utente). Formato: "Caffè spento" |
-/// "Caffè attivo · da 1 ora e 23 min" | "Caffè attivo · da 5 min · 42 min rimanenti".
-public func statusLine(active: Bool, elapsedSeconds: Int?, remainingSeconds: Int?) -> String {
-    guard active else { return "Caffè spento" }
-    var line = "Caffè attivo"
-    if let elapsed = elapsedSeconds {
-        line += " · da " + remainingText(seconds: elapsed)
+/// Titolo dell'header del menu (riga 1).
+public func statusTitle(active: Bool) -> String {
+    active ? "Caffè attivo" : "Caffè spento"
+}
+
+/// Sottotitolo dell'header del menu (riga 2).
+public func statusSubtitle(active: Bool, elapsedSeconds: Int?, remainingSeconds: Int?) -> String {
+    guard active else { return "clic per attivare" }
+    var s = "da " + remainingText(seconds: elapsedSeconds ?? 0)
+    if let r = remainingSeconds {
+        s += " · " + remainingText(seconds: r) + " rimanenti"
     }
-    if let remaining = remainingSeconds {
-        line += " · " + remainingText(seconds: remaining) + " rimanenti"
-    }
-    return line
+    return s
 }
 
 /// Corpo della notifica all'attivazione.
