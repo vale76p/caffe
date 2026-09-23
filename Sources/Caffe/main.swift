@@ -410,6 +410,9 @@ private final class PillSwitchView: NSView {
         NSColor.white.setFill()
         knob.fill()
     }
+
+    // i click li gestisce la riga intera: la pillola non deve consumarli
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// Riga-switch cliccabile ovunque: azione al rilascio del mouse, come le voci menu.
