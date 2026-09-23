@@ -128,6 +128,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Clic sinistro = menu; clic destro (o ⌥-clic) = attiva/disattiva subito.
+    /// Il menu si apre in modo NATIVO: si attacca temporaneamente alla status item
+    /// (sessione di sistema, sempre ancorata con freccia — il popUp manuale su
+    /// questa versione di macOS "cadeva" staccato dopo qualche secondo) e in
+    /// menuDidClose viene ri-sganciato, così il destro/⌥ continua a fare toggle.
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { return }
         let rightClick = event.type == .rightMouseUp
@@ -135,7 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if rightClick || optionClick {
             toggleCaffeinate()
         } else {
-            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+            statusItem.menu = menu
+            sender.performClick(nil) // con menu impostato, AppKit apre la sessione nativa
         }
     }
 
@@ -741,6 +746,7 @@ extension AppDelegate: NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         syncSwitches() // niente visual "congelato" azzurro dopo la chiusura
+        statusItem.menu = nil // ri-armare il dispatch custom: destro/⌥ = toggle
     }
 }
 
