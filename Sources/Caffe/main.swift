@@ -19,8 +19,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var durationItems: [NSMenuItem] = []
     private var stopItem: NSMenuItem!
 
-    private var authRequested = false
-
     // MARK: ciclo di vita
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -125,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func switchItem(title: String, isOn: Bool, tag: Int, icon: String? = nil) -> NSMenuItem {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+        let view = SwitchRow(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
         var constraints: [NSLayoutConstraint] = []
         var leading: NSLayoutXAxisAnchor = view.leadingAnchor
         var labelConstant: CGFloat = 16
@@ -144,12 +142,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let label = NSTextField(labelWithString: title)
         label.translatesAutoresizingMaskIntoConstraints = false
-        let sw = NSSwitch(frame: .zero)
+        let sw = DisplaySwitch(frame: .zero)
         sw.translatesAutoresizingMaskIntoConstraints = false
         sw.tag = tag
         sw.state = isOn ? .on : .off
-        sw.target = self
-        sw.action = #selector(toggleSwitch(_:))
         view.addSubview(label)
         view.addSubview(sw)
         constraints += [
@@ -161,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLayoutConstraint.activate(constraints)
         item.view = view
         switches[tag] = sw
+        view.onPick = { [weak self] in self?.toggleSetting(tag) }
         return item
     }
 
@@ -180,31 +177,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    @objc private func toggleSwitch(_ sender: NSSwitch) {
-        switch sender.tag {
+    private func toggleSetting(_ tag: Int) {
+        let d = UserDefaults.standard
+        switch tag {
         case 1:
-            if sender.state == .on { screensaver.enable() } else { screensaver.disable() }
+            if screensaver.isActive { screensaver.disable() } else { screensaver.enable() }
         case 2:
             toggleLoginCore()
         case 3:
-            UserDefaults.standard.set(sender.state == .on, forKey: SettingsKeys.activateOnLaunch)
+            d.set(!d.bool(forKey: SettingsKeys.activateOnLaunch), forKey: SettingsKeys.activateOnLaunch)
         case 4:
-            UserDefaults.standard.set(sender.state == .on, forKey: SettingsKeys.showNotifications)
+            let newValue = !showNotifications
+            d.set(newValue, forKey: SettingsKeys.showNotifications)
+            if newValue { ensureNotificationAuthorization() }
         case 10:
-            flags.display = sender.state == .on
+            flags.display.toggle()
             flagsChanged()
         case 11:
-            flags.idle = sender.state == .on
+            flags.idle.toggle()
             flagsChanged()
         case 12:
-            flags.disk = sender.state == .on
+            flags.disk.toggle()
             flagsChanged()
         case 13:
-            flags.system = sender.state == .on
+            flags.system.toggle()
             flagsChanged()
         default:
             break
         }
+        syncSwitches()
     }
 
     // MARK: azioni menu
@@ -217,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSSound.beep()
             return
         }
-        requestNotificationAuthorizationIfNeeded()
+        ensureNotificationAuthorization()
         notify(activationMessage(for: option))
         refresh()
     }
@@ -245,7 +246,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 """
             alert.runModal()
         }
-        switches[2]?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
     }
 
     @objc private func quit(_ sender: NSMenuItem) {
@@ -270,6 +270,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stopItem.isHidden = !active
     }
 
+    private func syncSwitches() {
+        switches[1]?.state = screensaver.isActive ? .on : .off
+        switches[2]?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        switches[3]?.state = UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch) ? .on : .off
+        switches[4]?.state = showNotifications ? .on : .off
+        switches[10]?.state = flags.display ? .on : .off
+        switches[11]?.state = flags.idle ? .on : .off
+        switches[12]?.state = flags.disk ? .on : .off
+        switches[13]?.state = flags.system ? .on : .off
+    }
+
     private func statusIcon(active: Bool) -> NSImage? {
         if active {
             let image = NSImage(systemSymbolName: "cup.and.saucer.fill",
@@ -288,13 +299,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: notifiche
 
-    private func requestNotificationAuthorizationIfNeeded() {
-        guard !authRequested else { return }
-        authRequested = true
-        // come notify(): senza bundle (sviluppo) il centro notifiche non esiste e
-        // UNUserNotificationCenter.current() crasha — non provarci nemmeno
+    private func ensureNotificationAuthorization() {
+        // UNUserNotificationCenter richiede un bundle: in sviluppo (swift run) niente notifiche
         guard Bundle.main.bundleIdentifier != nil else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch settings.authorizationStatus {
+                case .notDetermined:
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { granted, _ in
+                        if granted { self.notify("Notifiche attive ☕️") }
+                    }
+                case .denied:
+                    self.warnNotificationsDenied()
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    private func warnNotificationsDenied() {
+        let alert = NSAlert()
+        alert.messageText = "Le notifiche sono disattivate per Caffè"
+        alert.informativeText = """
+            Abilitale in Impostazioni di sistema → Notifiche → Caffè \
+            per vedere gli avvisi di attivazione e scadenza.
+            """
+        alert.addButton(withTitle: "Apri Impostazioni")
+        alert.addButton(withTitle: "OK")
+        if alert.runModal() == .alertFirstButtonReturn {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings-extension") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     private func notify(_ body: String) {
@@ -351,18 +389,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Interruttore puramente visivo: i click li gestisce la riga intera.
+/// (NSSwitch dentro NSMenuItem.view non consegna in modo affidabile la propria
+/// azione su macOS: il click commutava solo il colore senza aggiornare lo stato.)
+private final class DisplaySwitch: NSSwitch {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Riga-switch cliccabile ovunque: azione al rilascio del mouse, come le voci menu.
+private final class SwitchRow: NSView {
+    var onPick: (() -> Void)?
+    override func mouseDown(with event: NSEvent) { } // inghiottito: agiamo al rilascio
+    override func mouseUp(with event: NSEvent) { onPick?() }
+}
+
 // Risincronizza gli switch a ogni apertura del menu (incluse modifiche esterne).
 extension AppDelegate: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         refresh()
-        switches[1]?.state = screensaver.isActive ? .on : .off
-        switches[2]?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
-        switches[3]?.state = UserDefaults.standard.bool(forKey: SettingsKeys.activateOnLaunch) ? .on : .off
-        switches[4]?.state = showNotifications ? .on : .off
-        switches[10]?.state = flags.display ? .on : .off
-        switches[11]?.state = flags.idle ? .on : .off
-        switches[12]?.state = flags.disk ? .on : .off
-        switches[13]?.state = flags.system ? .on : .off
+        syncSwitches()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        syncSwitches() // niente visual "congelato" azzurro dopo la chiusura
     }
 }
 

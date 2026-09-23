@@ -85,4 +85,26 @@ func runCaffeinateProcessTests() {
     runTest("flag caffeinate: tutti spenti, nessun argomento") {
         try expectEqual(CaffeinateFlags(display: false, idle: false, disk: false, system: false).arguments, [])
     }
+
+    runTest("flag e2e: il figlio caffeinate parte con gli argomenti giusti") {
+        let c = CaffeinateProcess()
+        try c.start(option: .infinite,
+                    flags: CaffeinateFlags(display: true, idle: false, disk: true, system: false))
+        guard let pid = c.childProcessIdentifier else {
+            throw TestFailure("figlio attivo ma senza PID")
+        }
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-o", "args=", "-p", String(pid)]
+        let pipe = Pipe()
+        ps.standardOutput = pipe
+        ps.standardError = FileHandle.nullDevice
+        try ps.run()
+        ps.waitUntilExit()
+        let args = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        try expectTrue(args.contains("caffeinate -d -m"), "output ps: \(args)")
+        try expectFalse(args.contains("-i"), "output ps: \(args)")
+        try expectFalse(args.contains("-s"), "output ps: \(args)")
+        c.stop()
+    }
 }
